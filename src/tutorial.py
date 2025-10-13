@@ -26,7 +26,7 @@ class TutorialWindow(QDialog):
     def init_ui(self):
         """初始化界面"""
         self.setWindowTitle("🎓 欢迎使用桌面灵宠")
-        self.setFixedSize(600, 450)
+        self.setFixedSize(700, 500)
         self.setWindowFlags(Qt.Dialog | Qt.WindowCloseButtonHint)
         
         # 主布局
@@ -126,14 +126,13 @@ class TutorialWindow(QDialog):
         
         # 说明文字
         text = QLabel(
-            "桌面灵宠是一个可爱的桌面助手，\n"
-            "帮助您管理每日任务，提醒重要事项。\n\n"
-            "让我们开始一个简短的引导，\n"
-            "带您了解如何使用这个应用！"
+            "呆呆灭龙是一个可爱的桌面助手，帮助您管理每日任务，提醒重要事项。\n\n"
+            "让我们开始一个简短的引导，带你了解如何使用这个应用！"
         )
         text.setFont(QFont("", 14))
         text.setAlignment(Qt.AlignCenter)
         text.setWordWrap(True)
+        text.setStyleSheet("padding: 10px;")
         layout.addWidget(text)
         
         layout.addStretch()

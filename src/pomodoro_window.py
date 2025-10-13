@@ -16,8 +16,22 @@ from PyQt5.QtGui import QFont
 # 导入番茄钟核心
 try:
     from src.pomodoro_core import PomodoroManager
+    from src.modern_ui import (ModernButton, ModernTabWidget, ModernCard, 
+                              ModernProgressBar, ModernSpinBox, ModernCheckBox, COLORS)
 except ImportError:
     from pomodoro_core import PomodoroManager
+    try:
+        from modern_ui import (ModernButton, ModernTabWidget, ModernCard, 
+                              ModernProgressBar, ModernSpinBox, ModernCheckBox, COLORS)
+    except ImportError:
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernTabWidget = QTabWidget
+        ModernCard = QGroupBox
+        ModernProgressBar = QProgressBar
+        ModernSpinBox = QSpinBox
+        ModernCheckBox = QCheckBox
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1'}
 
 
 class PomodoroWindow(QWidget):
@@ -39,12 +53,14 @@ class PomodoroWindow(QWidget):
         """初始化界面"""
         self.setWindowTitle("🍅 番茄钟")
         self.setGeometry(100, 100, 700, 600)
+        # 应用Neumorphism背景色
+        self.setStyleSheet(f"QWidget {{ background-color: {COLORS['background']}; }}")
         
         # 主布局
         layout = QVBoxLayout()
         
         # 创建标签页
-        self.tab_widget = QTabWidget()
+        self.tab_widget = ModernTabWidget()
         
         # 各个页面
         self.tab_widget.addTab(self.create_timer_page(), "⏱️ 计时器")
@@ -57,7 +73,7 @@ class PomodoroWindow(QWidget):
         # 底部按钮
         button_layout = QHBoxLayout()
         
-        self.close_btn = QPushButton("❌ 关闭")
+        self.close_btn = ModernButton("❌ 关闭", style="secondary")
         self.close_btn.clicked.connect(self.close)
         
         button_layout.addStretch()

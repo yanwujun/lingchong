@@ -12,6 +12,20 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QFrame)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
+from typing import Dict
+
+# 导入现代化UI组件
+try:
+    from src.modern_ui import ModernButton, ModernTabWidget, ModernCard, COLORS
+except ImportError:
+    try:
+        from modern_ui import ModernButton, ModernTabWidget, ModernCard, COLORS
+    except ImportError:
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernTabWidget = QTabWidget
+        ModernCard = QFrame
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1', 'primary_light': '#a5b4fc', 'shadow_dark': '#a3b1c6', 'shadow_light': '#ffffff', 'divider': '#cbd5e0'}
 
 # 导入道具定义
 try:
@@ -100,16 +114,16 @@ class ShopItemCard(QFrame):
         self.setLayout(layout)
         
         # 样式
-        self.setStyleSheet("""
-            ShopItemCard {
-                background-color: white;
-                border: 2px solid #ddd;
-                border-radius: 8px;
-            }
-            ShopItemCard:hover {
-                border: 2px solid #4CAF50;
-                background-color: #f0f9f0;
-            }
+        self.setStyleSheet(f"""
+            ShopItemCard {{
+                background-color: {COLORS['surface']};
+                border: 2px solid {COLORS['divider']};
+                border-radius: 12px;
+            }}
+            ShopItemCard:hover {{
+                border: 2px solid {COLORS['primary']};
+                background-color: {COLORS['primary_light']};
+            }}
         """)
     
     def mousePressEvent(self, event):
@@ -157,7 +171,7 @@ class PetShopWindow(QWidget):
         layout.addLayout(header_layout)
         
         # 标签页
-        tab_widget = QTabWidget()
+        tab_widget = ModernTabWidget()
         
         # 道具商店
         items_tab = self.create_items_tab()
@@ -172,10 +186,10 @@ class PetShopWindow(QWidget):
         # 底部按钮
         button_layout = QHBoxLayout()
         
-        refresh_btn = QPushButton("🔄 刷新")
+        refresh_btn = ModernButton("🔄 刷新", style="secondary")
         refresh_btn.clicked.connect(self.load_points)
         
-        close_btn = QPushButton("❌ 关闭")
+        close_btn = ModernButton("❌ 关闭", style="secondary")
         close_btn.clicked.connect(self.close)
         
         button_layout.addStretch()

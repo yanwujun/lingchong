@@ -13,6 +13,19 @@ from PyQt5.QtGui import QFont
 from typing import Dict, List
 import sys
 
+# 导入现代化UI组件
+try:
+    from src.modern_ui import ModernButton, ModernCard, ModernListWidget, COLORS
+except ImportError:
+    try:
+        from modern_ui import ModernButton, ModernCard, ModernListWidget, COLORS
+    except ImportError:
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernCard = QGroupBox
+        ModernListWidget = QListWidget
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1'}
+
 # 道具定义
 ITEMS = {
     # 食物类
@@ -72,18 +85,21 @@ class InventoryWindow(QWidget):
         content_layout = QHBoxLayout()
         
         # 左侧：道具列表
-        list_group = QGroupBox("道具列表")
-        list_layout = QVBoxLayout()
+        list_group = ModernCard()
+        list_layout = QVBoxLayout(list_group)
         
-        self.item_list = QListWidget()
+        list_title = QLabel("道具列表")
+        list_title.setFont(QFont("", 14, QFont.Bold))
+        list_layout.addWidget(list_title)
+        
+        self.item_list = ModernListWidget()
         self.item_list.itemClicked.connect(self.on_item_selected)
         list_layout.addWidget(self.item_list)
         
-        list_group.setLayout(list_layout)
         content_layout.addWidget(list_group, 2)
         
         # 右侧：道具详情
-        detail_group = QGroupBox("道具详情")
+        detail_group = ModernCard()
         detail_layout = QVBoxLayout()
         
         self.item_icon = QLabel("❓")
@@ -108,25 +124,9 @@ class InventoryWindow(QWidget):
         detail_layout.addWidget(self.item_effect)
         
         # 使用按钮
-        self.use_btn = QPushButton("✨ 使用")
+        self.use_btn = ModernButton("✨ 使用", style="primary")
         self.use_btn.clicked.connect(self.use_item)
         self.use_btn.setEnabled(False)
-        self.use_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 10px;
-                border-radius: 5px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:disabled {
-                background-color: #ccc;
-            }
-        """)
         detail_layout.addWidget(self.use_btn)
         
         detail_layout.addStretch()
@@ -138,10 +138,10 @@ class InventoryWindow(QWidget):
         # 底部按钮
         button_layout = QHBoxLayout()
         
-        refresh_btn = QPushButton("🔄 刷新")
+        refresh_btn = ModernButton("🔄 刷新", style="secondary")
         refresh_btn.clicked.connect(self.load_inventory)
         
-        close_btn = QPushButton("❌ 关闭")
+        close_btn = ModernButton("❌ 关闭", style="secondary")
         close_btn.clicked.connect(self.close)
         
         button_layout.addStretch()

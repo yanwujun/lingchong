@@ -12,6 +12,18 @@ from PyQt5.QtGui import QFont
 from typing import List, Dict
 import sys
 
+# 导入现代化UI组件
+try:
+    from src.modern_ui import ModernButton, ModernCard, COLORS
+except ImportError:
+    try:
+        from modern_ui import ModernButton, ModernCard, COLORS
+    except ImportError:
+        # 回退到原始组件
+        ModernButton = QWidget  # 这里用QWidget代替，因为原始代码中没有按钮
+        ModernCard = QFrame
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'success': '#48bb78', 'shadow_dark': '#a3b1c6', 'shadow_light': '#ffffff', 'divider': '#cbd5e0'}
+
 # 成就定义
 ACHIEVEMENTS = {
     # 等级成就
@@ -102,21 +114,21 @@ class AchievementCard(QFrame):
         
         # 样式
         if self.unlocked:
-            self.setStyleSheet("""
-                AchievementCard {
-                    background-color: white;
-                    border: 2px solid #4CAF50;
-                    border-radius: 8px;
-                }
+            self.setStyleSheet(f"""
+                AchievementCard {{
+                    background-color: {COLORS['surface']};
+                    border: 2px solid {COLORS['success']};
+                    border-radius: 12px;
+                }}
             """)
         else:
-            self.setStyleSheet("""
-                AchievementCard {
-                    background-color: #f5f5f5;
-                    border: 2px solid #ddd;
-                    border-radius: 8px;
+            self.setStyleSheet(f"""
+                AchievementCard {{
+                    background-color: {COLORS['background']};
+                    border: 2px solid {COLORS['divider']};
+                    border-radius: 12px;
                     opacity: 0.6;
-                }
+                }}
             """)
 
 
@@ -165,20 +177,8 @@ class AchievementsWindow(QWidget):
         
         # 关闭按钮
         close_btn_layout = QHBoxLayout()
-        close_btn = QPushButton("❌ 关闭")
+        close_btn = ModernButton("❌ 关闭", style="secondary")
         close_btn.clicked.connect(self.close)
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
         close_btn_layout.addStretch()
         close_btn_layout.addWidget(close_btn)
         layout.addLayout(close_btn_layout)
@@ -186,7 +186,7 @@ class AchievementsWindow(QWidget):
         self.setLayout(layout)
         
         # 窗口样式
-        self.setStyleSheet("QWidget { background-color: #f0f0f0; }")
+        self.setStyleSheet(f"QWidget {{ background-color: {COLORS['background']}; }}")
     
     def load_achievements(self):
         """加载成就数据"""

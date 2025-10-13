@@ -16,13 +16,28 @@ from PyQt5.QtCore import Qt, pyqtSignal
 try:
     from src.themes import apply_theme_to_widget
     from src.sound_manager import get_sound_manager
+    from src.modern_ui import (ModernButton, ModernInput, ModernComboBox, 
+                              ModernTabWidget, ModernCard, ModernSlider, 
+                              ModernCheckBox, COLORS)
 except ImportError:
     try:
         from themes import apply_theme_to_widget
         from sound_manager import get_sound_manager
+        from modern_ui import (ModernButton, ModernInput, ModernComboBox, 
+                              ModernTabWidget, ModernCard, ModernSlider, 
+                              ModernCheckBox, COLORS)
     except ImportError:
         apply_theme_to_widget = None
         get_sound_manager = None
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernInput = QLineEdit
+        ModernComboBox = QComboBox
+        ModernTabWidget = QTabWidget
+        ModernCard = QGroupBox
+        ModernSlider = QSlider
+        ModernCheckBox = QCheckBox
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1', 'shadow_dark': '#a3b1c6', 'shadow_light': '#ffffff'}
 
 
 class SettingsWindow(QWidget):
@@ -43,12 +58,14 @@ class SettingsWindow(QWidget):
         """初始化界面"""
         self.setWindowTitle("⚙️ 设置")
         self.setGeometry(100, 100, 600, 500)
+        # 应用Neumorphism背景色
+        self.setStyleSheet(f"QWidget {{ background-color: {COLORS['background']}; }}")
         
         # 主布局
         layout = QVBoxLayout()
         
         # 创建标签页
-        tab_widget = QTabWidget()
+        tab_widget = ModernTabWidget()
         
         # 各个设置页面
         tab_widget.addTab(self.create_pet_settings(), "🐱 宠物设置")
@@ -61,13 +78,13 @@ class SettingsWindow(QWidget):
         # 底部按钮
         button_layout = QHBoxLayout()
         
-        save_btn = QPushButton("💾 保存设置")
+        save_btn = ModernButton("💾 保存设置", style="primary")
         save_btn.clicked.connect(self.save_settings)
         
-        reset_btn = QPushButton("🔄 恢复默认")
+        reset_btn = ModernButton("🔄 恢复默认", style="secondary")
         reset_btn.clicked.connect(self.reset_settings)
         
-        close_btn = QPushButton("❌ 关闭")
+        close_btn = ModernButton("❌ 关闭", style="secondary")
         close_btn.clicked.connect(self.close)
         
         button_layout.addStretch()
@@ -88,16 +105,16 @@ class SettingsWindow(QWidget):
         layout = QVBoxLayout()
         
         # 外观设置
-        appearance_group = QGroupBox("外观设置")
-        appearance_layout = QFormLayout()
+        appearance_group = ModernCard()
+        appearance_layout = QFormLayout(appearance_group)
         
         # 宠物皮肤
-        self.skin_combo = QComboBox()
+        self.skin_combo = ModernComboBox()
         self.skin_combo.addItems(["默认宠物", "小猫", "小狗", "兔子", "企鹅"])
         appearance_layout.addRow("宠物皮肤:", self.skin_combo)
         
         # 宠物大小
-        self.size_slider = QSlider(Qt.Horizontal)
+        self.size_slider = ModernSlider(Qt.Horizontal)
         self.size_slider.setMinimum(64)
         self.size_slider.setMaximum(256)
         self.size_slider.setValue(128)

@@ -16,11 +16,17 @@ from PyQt5.QtGui import QFont
 # 导入主题
 try:
     from src.themes import apply_theme_to_widget
+    from src.modern_ui import ModernButton, ModernCard, COLORS
 except ImportError:
     try:
         from themes import apply_theme_to_widget
+        from modern_ui import ModernButton, ModernCard, COLORS
     except ImportError:
         apply_theme_to_widget = None
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernCard = QGroupBox
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1'}
 
 
 class StatisticsWindow(QWidget):
@@ -76,10 +82,10 @@ class StatisticsWindow(QWidget):
         # 底部按钮
         button_layout = QHBoxLayout()
         
-        refresh_btn = QPushButton("🔄 刷新数据")
+        refresh_btn = ModernButton("🔄 刷新数据", style="secondary")
         refresh_btn.clicked.connect(self.load_statistics)
         
-        close_btn = QPushButton("❌ 关闭")
+        close_btn = ModernButton("❌ 关闭", style="secondary")
         close_btn.clicked.connect(self.close)
         
         button_layout.addStretch()

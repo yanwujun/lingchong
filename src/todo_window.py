@@ -17,13 +17,26 @@ from PyQt5.QtGui import QColor, QKeySequence
 try:
     from src.sound_manager import get_sound_manager
     from src.themes import apply_theme_to_widget
+    from src.modern_ui import (ModernButton, ModernInput, ModernComboBox, 
+                              ModernTableWidget, ModernTextEdit, ModernCard, COLORS)
 except ImportError:
     try:
         from sound_manager import get_sound_manager
         from themes import apply_theme_to_widget
+        from modern_ui import (ModernButton, ModernInput, ModernComboBox, 
+                              ModernTableWidget, ModernTextEdit, ModernCard, COLORS)
     except ImportError:
         get_sound_manager = None
         apply_theme_to_widget = None
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernInput = QLineEdit
+        ModernComboBox = QComboBox
+        ModernTableWidget = QTableWidget
+        ModernTextEdit = QTextEdit
+        ModernCard = QWidget
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1', 'primary_dark': '#4f46e5', 
+                  'primary_light': '#a5b4fc', 'text_primary': '#4a5568', 'shadow_dark': '#a3b1c6', 'shadow_light': '#ffffff'}
 
 
 class TaskDialog(QDialog):
@@ -43,14 +56,13 @@ class TaskDialog(QDialog):
         layout = QFormLayout()
         
         # 任务标题
-        self.title_edit = QLineEdit()
-        self.title_edit.setPlaceholderText("输入任务标题...")
+        self.title_edit = ModernInput("输入任务标题...")
         if 'title' in self.task_data:
             self.title_edit.setText(self.task_data['title'])
         layout.addRow("标题*:", self.title_edit)
         
         # 任务描述
-        self.desc_edit = QTextEdit()
+        self.desc_edit = ModernTextEdit()
         self.desc_edit.setPlaceholderText("输入任务描述（可选）...")
         self.desc_edit.setMaximumHeight(100)
         if 'description' in self.task_data:
@@ -72,14 +84,14 @@ class TaskDialog(QDialog):
         layout.addRow("截止日期:", self.due_date_edit)
         
         # 优先级
-        self.priority_combo = QComboBox()
+        self.priority_combo = ModernComboBox()
         self.priority_combo.addItems(["低", "中", "高"])
         if 'priority' in self.task_data:
             self.priority_combo.setCurrentIndex(self.task_data['priority'] - 1)
         layout.addRow("优先级:", self.priority_combo)
         
         # 分类
-        self.category_combo = QComboBox()
+        self.category_combo = ModernComboBox()
         self.category_combo.addItems(["一般", "工作", "学习", "生活", "其他"])
         self.category_combo.setEditable(True)
         if 'category' in self.task_data and self.task_data['category']:
@@ -98,9 +110,8 @@ class TaskDialog(QDialog):
         
         # 标签输入和添加
         tag_input_layout = QHBoxLayout()
-        self.tag_input = QLineEdit()
-        self.tag_input.setPlaceholderText("输入新标签...")
-        add_tag_btn = QPushButton("+ 添加")
+        self.tag_input = ModernInput("输入新标签...")
+        add_tag_btn = ModernButton("+ 添加", style="secondary")
         add_tag_btn.clicked.connect(self.add_new_tag)
         tag_input_layout.addWidget(self.tag_input)
         tag_input_layout.addWidget(add_tag_btn)
@@ -127,9 +138,9 @@ class TaskDialog(QDialog):
         # 按钮
         button_layout = QHBoxLayout()
         
-        save_btn = QPushButton("保存")
+        save_btn = ModernButton("保存", style="primary")
         save_btn.clicked.connect(self.accept)
-        cancel_btn = QPushButton("取消")
+        cancel_btn = ModernButton("取消", style="secondary")
         cancel_btn.clicked.connect(self.reject)
         
         button_layout.addWidget(save_btn)
@@ -247,6 +258,8 @@ class TodoWindow(QWidget):
         """初始化界面"""
         self.setWindowTitle("📝 待办事项")
         self.setGeometry(100, 100, 800, 600)
+        # 应用Neumorphism背景色
+        self.setStyleSheet(f"QWidget {{ background-color: {COLORS['background']}; }}")
         
         # 主布局
         layout = QVBoxLayout()
@@ -256,7 +269,7 @@ class TodoWindow(QWidget):
         layout.addLayout(toolbar)
         
         # 任务列表表格
-        self.task_table = QTableWidget()
+        self.task_table = ModernTableWidget()
         self.task_table.setColumnCount(6)
         self.task_table.setHorizontalHeaderLabels([
             "ID", "标题", "截止时间", "优先级", "状态", "分类"
@@ -295,32 +308,31 @@ class TodoWindow(QWidget):
         toolbar = QHBoxLayout()
         
         # 添加按钮
-        self.add_btn = QPushButton("➕ 添加任务")
+        self.add_btn = ModernButton("➕ 添加任务", style="primary")
         self.add_btn.clicked.connect(self.add_task)
         
         # 编辑按钮
-        self.edit_btn = QPushButton("✏️ 编辑")
+        self.edit_btn = ModernButton("✏️ 编辑", style="secondary")
         self.edit_btn.clicked.connect(self.edit_task)
         
         # 删除按钮
-        self.delete_btn = QPushButton("🗑️ 删除")
+        self.delete_btn = ModernButton("🗑️ 删除", style="secondary")
         self.delete_btn.clicked.connect(self.delete_task)
         
         # 完成按钮
-        self.complete_btn = QPushButton("✅ 完成")
+        self.complete_btn = ModernButton("✅ 完成", style="secondary")
         self.complete_btn.clicked.connect(self.complete_task)
         
         # 统计按钮 [v0.3.0]
-        self.stats_btn = QPushButton("📊 统计")
+        self.stats_btn = ModernButton("📊 统计", style="secondary")
         self.stats_btn.clicked.connect(self.show_statistics)
         
         # 搜索框
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 搜索任务...")
+        self.search_edit = ModernInput("🔍 搜索任务...")
         self.search_edit.textChanged.connect(self.search_tasks)
         
         # 筛选下拉框
-        self.filter_combo = QComboBox()
+        self.filter_combo = ModernComboBox()
         self.filter_combo.addItems(["全部", "待完成", "已完成", "已过期"])
         self.filter_combo.currentTextChanged.connect(self.filter_tasks)
         

@@ -16,8 +16,17 @@ from PyQt5.QtGui import QFont
 # 导入AI管理器
 try:
     from src.ai_chat import AIChatManager
+    from src.modern_ui import ModernButton, ModernTextEdit, ModernInput, COLORS
 except ImportError:
     from ai_chat import AIChatManager
+    try:
+        from modern_ui import ModernButton, ModernTextEdit, ModernInput, COLORS
+    except ImportError:
+        # 回退到原始组件
+        ModernButton = QPushButton
+        ModernTextEdit = QTextEdit
+        ModernInput = QLineEdit
+        COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1'}
 
 
 class MessageBubble(QFrame):

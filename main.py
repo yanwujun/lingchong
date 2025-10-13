@@ -67,9 +67,8 @@ class DesktopPetApp:
         self.logger = get_logger("Main")
         
         try:
-            # 初始化各个组件
+            # 初始化各个组件（包含信号连接）
             self.init_components()
-            self.connect_signals()
         except Exception as e:
             self.logger.exception("应用初始化失败")
             QMessageBox.critical(
@@ -86,7 +85,7 @@ class DesktopPetApp:
         print("=" * 60)
         
         # 1. 加载配置
-        print("\n[1/12] 加载配置文件...")
+        print("\n[1/15] 加载配置文件...")
         try:
             self.config = load_config("config.ini")
             print("  [OK] 配置加载完成")
@@ -97,7 +96,7 @@ class DesktopPetApp:
             print(f"  [WARN] 配置加载失败，使用默认配置: {e}")
         
         # 2. 初始化数据库
-        print("\n[2/12] 初始化数据库...")
+        print("\n[2/15] 初始化数据库...")
         try:
             db_path = self.config.get('Database', {}).get('db_path', 'data/tasks.db')
             self.database = Database(db_path)
@@ -118,7 +117,7 @@ class DesktopPetApp:
             raise
         
         # 3. 初始化宠物管理器 [v0.4.0]
-        print("\n[3/12] 初始化宠物管理器...")
+        print("\n[3/15] 初始化宠物管理器...")
         try:
             from src.pet_manager import PetManager
             self.pet_manager = PetManager(database=self.database)
@@ -133,9 +132,8 @@ class DesktopPetApp:
         except Exception as e:
             self.logger.error(f"宠物管理器初始化失败: {e}")
             print(f"  [WARN] 宠物管理器初始化失败: {e}")
-        
         # 4. 初始化宠物成长系统 [v0.4.0]
-        print("\n[4/12] 初始化宠物成长系统...")
+        print("\n[4/15] 初始化宠物成长系统...")
         try:
             from src.pet_growth import PetGrowthSystem
             active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
@@ -150,7 +148,7 @@ class DesktopPetApp:
             print(f"  [WARN] 宠物成长系统初始化失败: {e}")
         
         # 5. 创建宠物窗口
-        print("\n[5/12] 创建宠物窗口...")
+        print("\n[5/15] 创建宠物窗口...")
         try:
             active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
             pet_id = active_pet['id'] if active_pet else None
@@ -163,7 +161,7 @@ class DesktopPetApp:
             raise
         
         # 6. 创建待办窗口（初始隐藏）
-        print("\n[6/12] 创建待办事项窗口...")
+        print("\n[6/15] 创建待办事项窗口...")
         try:
             self.todo_window = TodoWindow(database=self.database)
             print("  [OK] 待办窗口创建完成")
@@ -175,7 +173,7 @@ class DesktopPetApp:
             self.todo_window = None
         
         # 7. 创建设置窗口（初始隐藏）
-        print("\n[7/12] 创建设置窗口...")
+        print("\n[7/15] 创建设置窗口...")
         try:
             self.settings_window = SettingsWindow(config=self.config)
             print("  [OK] 设置窗口创建完成")
@@ -187,7 +185,7 @@ class DesktopPetApp:
             self.settings_window = None
         
         # 8. 启动提醒系统
-        print("\n[8/12] 启动提醒系统...")
+        print("\n[8/15] 启动提醒系统...")
         try:
             self.reminder_system = ReminderSystem(
                 database=self.database,
@@ -203,7 +201,7 @@ class DesktopPetApp:
             self.reminder_system = None
         
         # 9. 创建系统托盘
-        print("\n[9/12] 创建系统托盘...")
+        print("\n[9/15] 创建系统托盘...")
         try:
             self.tray_icon = SystemTray(icon_path="assets/icons/tray_icon.png")
             self.tray_icon.show()
@@ -218,7 +216,7 @@ class DesktopPetApp:
         # ========== v0.4.0 新功能初始化 ==========
         
         # 10. 创建番茄钟系统 [v0.4.0]
-        print("\n[10/12] 创建番茄钟系统...")
+        print("\n[10/15] 创建番茄钟系统...")
         try:
             from src.pomodoro_window import PomodoroWindow
             from src.pomodoro_widget import PomodoroWidget
@@ -234,8 +232,46 @@ class DesktopPetApp:
             self.pomodoro_window = None
             self.pomodoro_widget = None
         
-        # 11. 创建AI对话窗口 [v0.4.0]
-        print("\n[11/12] 创建AI对话窗口...")
+        # 11. 创建成就/背包/商店窗口 [v0.4.0]
+        print("\n[11/15] 创建成就/背包/商店窗口...")
+        try:
+            from src.pet_achievements import AchievementsWindow
+            from src.pet_inventory import InventoryWindow
+            from src.pet_shop import PetShopWindow
+            
+            active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
+            pet_id = active_pet['id'] if active_pet else None
+            
+            # 成就窗口
+            self.achievements_window = AchievementsWindow(database=self.database, pet_id=pet_id)
+            print("  [OK] 成就窗口创建完成")
+            
+            # 背包窗口
+            self.inventory_window = InventoryWindow(
+                database=self.database, 
+                pet_id=pet_id,
+                pet_growth=self.pet_growth
+            )
+            print("  [OK] 背包窗口创建完成")
+            
+            # 商店窗口
+            self.shop_window = PetShopWindow(
+                database=self.database,
+                pet_manager=self.pet_manager,
+                pet_growth=self.pet_growth
+            )
+            print("  [OK] 商店窗口创建完成")
+            
+            self.logger.info("成就/背包/商店窗口创建成功")
+        except Exception as e:
+            self.logger.error(f"成就/背包/商店窗口创建失败: {e}")
+            print(f"  [ERROR] 成就/背包/商店窗口创建失败: {e}")
+            self.achievements_window = None
+            self.inventory_window = None
+            self.shop_window = None
+        
+        # 12. 创建AI对话窗口 [v0.4.0]
+        print("\n[12/15] 创建AI对话窗口...")
         try:
             from src.chat_window import ChatWindow
             active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
@@ -249,8 +285,8 @@ class DesktopPetApp:
             print(f"  [WARN] AI对话窗口创建失败: {e}")
             self.chat_window = None
         
-        # 12. 创建图片识别器 [v0.4.0]
-        print("\n[12/12] 创建图片识别器...")
+        # 13. 创建图片识别器 [v0.4.0]
+        print("\n[13/15] 创建图片识别器...")
         try:
             from src.image_recognizer import ImageRecognizer
             self.image_recognizer = ImageRecognizer(database=self.database)
@@ -261,12 +297,23 @@ class DesktopPetApp:
             print(f"  [WARN] 图片识别器创建失败: {e}")
             self.image_recognizer = None
         
+        # 14. 连接信号
+        print("\n[14/15] 连接组件信号...")
+        try:
+            self.connect_signals()
+            print("  [OK] 信号连接完成")
+            self.logger.info("信号连接成功")
+        except Exception as e:
+            self.logger.error(f"信号连接失败: {e}")
+            print(f"  [ERROR] 信号连接失败: {e}")
+        
+        # 15. 检查并显示新手引导 [v0.3.0]
+        print("\n[15/15] 检查新手引导...")
+        self.show_tutorial_if_needed()
+        
         print("\n" + "=" * 60)
         print("[SUCCESS] 所有组件初始化完成！")
         print("=" * 60)
-        
-        # 检查并显示新手引导 [v0.3.0]
-        self.show_tutorial_if_needed()
     
     def show_tutorial_if_needed(self):
         """显示新手引导（如果是首次启动）[v0.3.0]"""
@@ -485,6 +532,13 @@ class DesktopPetApp:
         try:
             print(f"[应用] 任务 {task_id} 已完成")
             self.logger.info(f"任务完成: ID={task_id}")
+            
+            # 播放兴奋动画
+            if self.pet_window:
+                self.pet_window.load_animation("excited")
+                # 2秒后恢复
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(2000, lambda: self.pet_window.load_animation("idle"))
             
             # 刷新待办窗口
             if self.todo_window:
@@ -770,6 +824,12 @@ class DesktopPetApp:
         try:
             print(f"[应用] 番茄钟完成: {session_type}, {duration}秒")
             self.logger.info(f"番茄钟会话完成: {session_type}")
+            
+            # 播放伸懒腰动画（休息完成）
+            if session_type == 'break' and self.pet_window:
+                self.pet_window.load_animation("stretch")
+                from PyQt5.QtCore import QTimer
+                QTimer.singleShot(3000, lambda: self.pet_window.load_animation("idle"))
             
             # 如果是工作会话，奖励经验和道具
             if session_type == 'work' and self.pet_growth:
