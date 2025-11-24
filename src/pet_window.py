@@ -8,7 +8,7 @@ Pet Window Module - 负责宠物的显示、动画和交互
 import sys
 import os
 from PyQt5.QtWidgets import QWidget, QLabel, QMenu, QAction
-from PyQt5.QtCore import Qt, QTimer, QPoint, QPointF, QRect, QPropertyAnimation, QEasingCurve, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QPoint, QPointF, QRect, QSize, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QPixmap, QMovie, QCursor
 import random
 import platform
@@ -20,12 +20,14 @@ try:
     from src.sound_manager import get_sound_manager
     from src.modern_ui import COLORS
     from src.character_pack_loader import get_character_pack_loader, CharacterPack
+    from src.logger import get_logger
 except ImportError:
     from utils import get_resource_path
     try:
         from sound_manager import get_sound_manager
         from modern_ui import COLORS
         from character_pack_loader import get_character_pack_loader, CharacterPack
+        from logger import get_logger
     except ImportError:
         get_sound_manager = None
         COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1', 'primary_dark': '#4f46e5', 
@@ -131,6 +133,7 @@ class PetWindow(QWidget):
         self.window_scan_timer.timeout.connect(self._scan_foreground_windows)
         self.window_scan_timer.start(3000)
         self._scan_foreground_windows()
+        self.logger = get_logger("PetWindow")
         
         # 初始化UI
         self.init_ui()
@@ -141,6 +144,14 @@ class PetWindow(QWidget):
         # 启动空闲检测
         self.idle_check_timer.timeout.connect(self.check_idle_state)
         self.idle_check_timer.start(500)  # 每500ms检查一次
+
+    def _log_debug(self, message: str):
+        """统一调试日志输出，包含宠物ID/角色包等信息"""
+        prefix = f"[PetWindow][pet={self.pet_id or 'default'}][pack={self.character_pack_id}]"
+        if hasattr(self, 'logger') and self.logger:
+            self.logger.debug(f"{prefix} {message}")
+        else:
+            print(f"{prefix} {message}")
     
     def _load_animation_config(self):
         """加载动画配置"""
@@ -238,27 +249,60 @@ class PetWindow(QWidget):
                     size = int(candidate)
         except Exception:
             size = 128
-        return max(48, size)
+        return max(128, size)
     
-    def _calculate_sprite_geometry(self, base_size: Optional[int] = None):
-        """根据角色包帧大小计算窗口尺寸"""
-        base = max(48, base_size or self.base_pet_size or 128)
-        sprite_scale = 1.0
-        width = height = base
+    def _get_frame_size_hint(self) -> tuple:
+        """根据角色包或默认值推断单帧尺寸"""
+        default_size = max(128, self.base_pet_size or 128)
+        width = height = default_size
         if self.character_pack:
             frame_size = self.character_pack.metadata.get('frame_size')
             if isinstance(frame_size, list) and len(frame_size) == 2:
                 try:
-                    frame_width = max(1, int(frame_size[0]))
-                    frame_height = max(1, int(frame_size[1]))
+                    width = max(1, int(frame_size[0]))
+                    height = max(1, int(frame_size[1]))
                 except (TypeError, ValueError):
-                    frame_width = frame_height = base
-                base_dim = max(frame_width, frame_height, 1)
-                sprite_scale = base / base_dim if base_dim else 1.0
-                width = max(48, int(frame_width * sprite_scale))
-                height = max(48, int(frame_height * sprite_scale))
+                    width = height = default_size
+        return width, height
+    
+    def _ensure_layered_window_safe(self):
+        """保证窗口物理尺寸始终大于动画帧，避免 layered window 报错"""
+        frame_w, frame_h = self._get_frame_size_hint()
+        safety_margin = 32
+        min_side = max(frame_w, frame_h, 256) + safety_margin
+        target_w = max(self.width(), min_side)
+        target_h = max(self.height(), min_side)
+        if target_w != self.width() or target_h != self.height():
+            self._apply_window_geometry(target_w, target_h)
+            self._log_debug(
+                f"LayeredWindow 调整: frame={frame_w}x{frame_h}, new_window={target_w}x{target_h}"
+            )
+
+    def _calculate_sprite_geometry(self, base_size: Optional[int] = None):
+        """根据角色包帧大小计算窗口尺寸"""
+        base = max(48, base_size or self.base_pet_size or 128)
+        sprite_scale = 1.0
+        frame_width, frame_height = self._get_frame_size_hint()
+        max_dim = max(frame_width, frame_height, base)
+        base_dim = max(frame_width, frame_height, 1)
+        sprite_scale = max_dim / base_dim if base_dim else 1.0
+        min_side = max(base, 128)
+        width = max(min_side, int(frame_width * sprite_scale))
+        height = max(min_side, int(frame_height * sprite_scale))
         self.sprite_scale = sprite_scale
         return width, height
+    
+    def _apply_window_geometry(self, width: int, height: int):
+        """统一更新窗口/标签大小，避免缩放失衡"""
+        width = max(48, int(width))
+        height = max(48, int(height))
+        self.setMinimumSize(width, height)
+        self.setMaximumSize(width, height)
+        self.resize(width, height)
+        if hasattr(self, 'pet_label'):
+            self.pet_label.setGeometry(0, 0, width, height)
+        self._sync_movie_scale()
+        self._log_debug(f"窗口尺寸更新为 {width}x{height}")
     
     def apply_character_pack(self, pack_id: str) -> bool:
         """动态切换角色包并刷新动画"""
@@ -274,9 +318,8 @@ class PetWindow(QWidget):
         if pack.animations:
             self.animation_states = list(pack.animations.keys())
         width, height = self._calculate_sprite_geometry(self.base_pet_size)
-        self.setFixedSize(width, height)
-        if hasattr(self, 'pet_label'):
-            self.pet_label.setGeometry(0, 0, width, height)
+        self._apply_window_geometry(width, height)
+        self._ensure_layered_window_safe()
         self._preload_animations()
         default_animation = pack.default_animation
         if not self.load_animation(default_animation):
@@ -306,15 +349,23 @@ class PetWindow(QWidget):
         # 设置窗口大小（支持嵌套配置 + 角色包尺寸）
         self.sprite_scale = 1.0
         width, height = self._calculate_sprite_geometry(self.base_pet_size)
-        self.setFixedSize(width, height)
+        self._apply_window_geometry(width, height)
+        self._ensure_layered_window_safe()
+        self._log_debug(
+            f"UI init: base_size={self.base_pet_size}, "
+            f"frame_hint={self._get_frame_size_hint()}, window={width}x{height}"
+        )
         
         # 创建标签用于显示宠物图片/动画
         self.pet_label = QLabel(self)
         self.pet_label.setAlignment(Qt.AlignCenter)
+        self.pet_label.setScaledContents(True)
         self.pet_label.setGeometry(0, 0, width, height)
         
         # 让标签不接收鼠标事件，事件由父窗口处理
         self.pet_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self._sync_movie_scale()
+        self._ensure_layered_window_safe()
         
         # 预加载所有动画
         self._preload_animations()
@@ -345,6 +396,7 @@ class PetWindow(QWidget):
             start_x = int(self.pet_profile.get('position_x', start_x))
             start_y = int(self.pet_profile.get('position_y', start_y))
         self.move(start_x, start_y)
+        self._log_debug(f"初始位置 -> ({start_x}, {start_y}), 窗口尺寸 {self.width()}x{self.height()}")
     
     def _preload_animations(self):
         """预加载所有动画到缓存"""
@@ -454,11 +506,13 @@ class PetWindow(QWidget):
                     # 使用缓存的GIF
                     self._clear_frame_animation()
                     self.movie = cached['movie']
+                    self._prepare_movie(self.movie)
                     self.pet_label.setMovie(self.movie)
                     self.pet_label.setStyleSheet("")
                     self.movie.start()
                     self.current_animation = animation_name
                     print(f"[宠物] 加载动画(缓存): {animation_name}.gif")
+                    self._log_debug(f"动画缓存命中 GIF -> {animation_name}")
                     return True
                     
                 elif cached['type'] == 'png':
@@ -473,6 +527,7 @@ class PetWindow(QWidget):
                     self.movie = None
                     self.current_animation = animation_name
                     print(f"[宠物] 加载图片(缓存): {animation_name}.png")
+                    self._log_debug(f"动画缓存命中 PNG -> {animation_name}")
                     return True
                 
                 elif cached['type'] == 'frames':
@@ -482,10 +537,12 @@ class PetWindow(QWidget):
                         cached.get('loop', True)
                     )
                     print(f"[宠物] 加载帧动画(缓存): {animation_name}")
+                    self._log_debug(f"动画缓存命中 FRAMES -> {animation_name}")
                     return True
             
             # 如果缓存中没有，尝试直接加载（降级方案）
             print(f"[宠物] 未缓存，尝试直接加载: {animation_name}")
+            self._log_debug(f"动画未缓存，开始磁盘加载 -> {animation_name}")
             
             # 尝试加载GIF动画
             gif_path = get_resource_path(f"assets/images/default/{animation_name}.gif")
@@ -502,11 +559,13 @@ class PetWindow(QWidget):
                 speed = int(100 * self.animation_config.get('animation_speed', 1.0))
                 self.movie.setSpeed(speed)
                 
+                self._prepare_movie(self.movie)
                 self.pet_label.setMovie(self.movie)
                 self.pet_label.setStyleSheet("")
                 self.movie.start()
                 self.current_animation = animation_name
                 print(f"[宠物] 加载动画: {animation_name}.gif")
+                self._log_debug(f"GIF 加载成功 -> {animation_name}, speed={speed}%")
                 return True
             
             # 尝试加载PNG图片
@@ -523,10 +582,12 @@ class PetWindow(QWidget):
                     self.movie = None
                     self.current_animation = animation_name
                     print(f"[宠物] 加载图片: {animation_name}.png")
+                    self._log_debug(f"PNG 加载成功 -> {animation_name}")
                     return True
             
             # 所有尝试失败，使用降级方案
             print(f"[宠物] 警告：未找到动画文件: {animation_name}")
+            self._log_debug(f"动画文件缺失 -> {animation_name}")
             return self._load_fallback_image(animation_name)
             
         except Exception as e:
@@ -534,6 +595,7 @@ class PetWindow(QWidget):
             import traceback
             traceback.print_exc()
             # 尝试降级方案
+            self._log_debug(f"动画加载异常 -> {animation_name}, error={e}")
             return self._load_fallback_image(animation_name)
     
     def _load_fallback_image(self, animation_name):
@@ -553,6 +615,7 @@ class PetWindow(QWidget):
                 cached = self.animation_cache['idle']
                 if cached['type'] == 'gif':
                     self.movie = cached['movie']
+                    self._prepare_movie(self.movie)
                     self.pet_label.setMovie(self.movie)
                     self.movie.start()
                     return True
@@ -642,6 +705,23 @@ class PetWindow(QWidget):
         if pixmap:
             self.pet_label.setPixmap(pixmap)
             self.pet_label.setStyleSheet("")
+    
+    def _sync_movie_scale(self):
+        """将 GIF 动画缩放到标签大小，避免 layered window 错误"""
+        if not hasattr(self, 'pet_label') or self.pet_label is None:
+            return
+        if self.movie:
+            target_size = self.pet_label.size()
+            if target_size.width() > 0 and target_size.height() > 0:
+                self.movie.setScaledSize(target_size)
+                frame_rect = self.movie.frameRect()
+                self._log_debug(
+                    "同步动画缩放 -> "
+                    f"movie_target={target_size.width()}x{target_size.height()}, "
+                    f"frame_rect={frame_rect.width()}x{frame_rect.height()}, "
+                    f"window={self.width()}x{self.height()}"
+                )
+        self._ensure_layered_window_safe()
     
     def pause_animation(self):
         """暂停当前动画"""
@@ -985,6 +1065,34 @@ class PetWindow(QWidget):
     def _overlap(a1, a2, b1, b2) -> bool:
         return min(a2, b2) - max(a1, b1) > 20
     
+    def resizeEvent(self, event):
+        """窗口尺寸变化时同步标签和动画缩放"""
+        super().resizeEvent(event)
+        if hasattr(self, 'pet_label') and self.pet_label:
+            self.pet_label.setGeometry(0, 0, self.width(), self.height())
+        self._log_debug(
+            f"resizeEvent -> window={self.width()}x{self.height()}, "
+            f"label={self.pet_label.size().width()}x{self.pet_label.size().height()}"
+        )
+        self._sync_movie_scale()
+        self._ensure_layered_window_safe()
+    
+    def _prepare_movie(self, movie: Optional[QMovie]):
+        """在设置到 QLabel 前预先缩放 GIF"""
+        if not movie:
+            return
+        target_size = self.pet_label.size() if hasattr(self, 'pet_label') else QSize(self.base_pet_size, self.base_pet_size)
+        if target_size.width() > 0 and target_size.height() > 0:
+            movie.setScaledSize(target_size)
+    
+    def showEvent(self, event):
+        """窗口显示时确保尺寸满足最低要求"""
+        super().showEvent(event)
+        width, height = self._calculate_sprite_geometry(self.base_pet_size)
+        if self.width() < width or self.height() < height:
+            self._apply_window_geometry(width, height)
+        self._ensure_layered_window_safe()
+    
     def mousePressEvent(self, event):
         """鼠标按下事件"""
         if event.button() == Qt.LeftButton:
@@ -1060,7 +1168,13 @@ class PetWindow(QWidget):
             
             # 播放音效
             if self.sound_manager:
-                self.sound_manager.play_success()
+                play_success = getattr(self.sound_manager, "play_success", None)
+                if callable(play_success):
+                    play_success()
+                else:
+                    play_click = getattr(self.sound_manager, "play_click", None)
+                    if callable(play_click):
+                        play_click()
             
             event.accept()
     

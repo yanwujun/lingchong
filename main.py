@@ -13,6 +13,7 @@ Version: 0.4.0
 import sys
 import os
 import io
+import ctypes
 from typing import Optional
 
 # 修复Qt平台插件路径问题（必须在导入PyQt5之前）
@@ -1403,16 +1404,30 @@ class DesktopPetApp:
             print(f"[ERROR] 应用运行失败: {e}")
 
 
+def _configure_dpi():
+    """确保在 Windows 上使用统一 DPI，避免 layered window 尺寸错位"""
+    if sys.platform != 'win32':
+        return
+    os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
+    os.environ.setdefault("QT_SCALE_FACTOR", "1")
+    os.environ.setdefault("QT_SCALE_FACTOR_ROUNDING_POLICY", "PassThrough")
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
+
 def main():
     """主函数"""
     logger = None
     
     try:
+        _configure_dpi()
         # 设置高DPI支持（必须在创建QApplication之前）
-        if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-            QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        if hasattr(Qt, 'AA_DisableHighDpiScaling'):
+            QApplication.setAttribute(Qt.AA_DisableHighDpiScaling, True)
         if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-            QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+            QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, False)
         
         # 创建应用实例
         app = QApplication(sys.argv)
