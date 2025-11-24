@@ -9,7 +9,7 @@ import sys
 import os
 from PyQt5.QtWidgets import QWidget, QLabel, QMenu, QAction
 from PyQt5.QtCore import Qt, QTimer, QPoint, QPointF, QRect, QSize, QPropertyAnimation, QEasingCurve, pyqtSignal
-from PyQt5.QtGui import QPixmap, QMovie, QCursor
+from PyQt5.QtGui import QPixmap, QMovie, QCursor, QImageReader
 import random
 import platform
 from typing import Optional, Dict
@@ -68,6 +68,7 @@ class PetWindow(QWidget):
         self.animation_cache = {}  # 动画缓存字典
         self.animation_paused = False  # 动画是否暂停
         self.base_pet_size = self._resolve_base_size()
+        self._frame_size_cache = None  # 缓存实际帧尺寸，避免重复解析
         
         # 交互状态
         self.is_hovered = False  # 鼠标是否悬停
@@ -252,18 +253,99 @@ class PetWindow(QWidget):
         return max(128, size)
     
     def _get_frame_size_hint(self) -> tuple:
-        """根据角色包或默认值推断单帧尺寸"""
+        """根据角色包或实际帧大小推断单帧尺寸"""
+        if self._frame_size_cache:
+            return self._frame_size_cache
+        
         default_size = max(128, self.base_pet_size or 128)
         width = height = default_size
+        
+        # 1) 读取 metadata 中的 frame_size（若存在且可信）
+        meta_size = None
         if self.character_pack:
             frame_size = self.character_pack.metadata.get('frame_size')
-            if isinstance(frame_size, list) and len(frame_size) == 2:
+            if isinstance(frame_size, (list, tuple)) and len(frame_size) == 2:
                 try:
-                    width = max(1, int(frame_size[0]))
-                    height = max(1, int(frame_size[1]))
+                    meta_w = max(1, int(frame_size[0]))
+                    meta_h = max(1, int(frame_size[1]))
+                    meta_size = (meta_w, meta_h)
                 except (TypeError, ValueError):
-                    width = height = default_size
-        return width, height
+                    meta_size = None
+        
+        # 2) 实际探测角色包帧尺寸（优先使用真实数据）
+        measured_size = self._measure_character_pack_frame_size()
+        
+        # 3) 若无角色包信息，则回退到默认资产的真实尺寸
+        if not measured_size:
+            measured_size = self._measure_default_asset_frame_size()
+        
+        # 组合结果：真实测得的尺寸优先，其次 metadata，最后默认值
+        if measured_size:
+            width, height = measured_size
+        elif meta_size:
+            width, height = meta_size
+        else:
+            width = height = default_size
+        
+        # 防止出现过小值
+        width = max(width, default_size // 2)
+        height = max(height, default_size // 2)
+        
+        self._frame_size_cache = (width, height)
+        return self._frame_size_cache
+    
+    def _measure_character_pack_frame_size(self) -> Optional[tuple]:
+        """扫描角色包帧文件，找出实际最大尺寸"""
+        if not self.character_pack or not self.character_pack.animations:
+            return None
+        max_w = max_h = 0
+        try:
+            for animation in self.character_pack.animations.values():
+                # 限制检查帧数，避免首次加载过慢
+                for frame in animation.frames[:5]:
+                    frame_size = self._probe_image_size(frame.path)
+                    if not frame_size:
+                        continue
+                    fw, fh = frame_size
+                    max_w = max(max_w, fw)
+                    max_h = max(max_h, fh)
+        except Exception as exc:
+            self._log_debug(f"测量角色包帧尺寸失败: {exc}")
+        return (max_w, max_h) if max_w and max_h else None
+    
+    def _measure_default_asset_frame_size(self) -> Optional[tuple]:
+        """在无角色包时，尝试读取默认动画资源的尺寸"""
+        candidate_names = ["idle", "walk", "happy"]
+        for name in candidate_names:
+            for ext in ("gif", "png"):
+                asset_path = get_resource_path(f"assets/images/default/{name}.{ext}")
+                size = self._probe_image_size(asset_path)
+                if size:
+                    return size
+        return None
+    
+    def _probe_image_size(self, path) -> Optional[tuple]:
+        """使用 QImageReader 读取图片尺寸，避免完整加载"""
+        if not path:
+            return None
+        try:
+            reader = QImageReader(str(path))
+            if not reader.canRead():
+                return None
+            size = reader.size()
+            if size.width() > 0 and size.height() > 0:
+                return size.width(), size.height()
+        except Exception:
+            return None
+        return None
+    
+    def _animation_load_succeeded(self) -> bool:
+        """统一动画加载成功后的收尾处理"""
+        try:
+            self._ensure_layered_window_safe()
+        except Exception as exc:
+            self._log_debug(f"调整 layered window 尺寸失败: {exc}")
+        return True
     
     def _ensure_layered_window_safe(self):
         """保证窗口物理尺寸始终大于动画帧，避免 layered window 报错"""
@@ -317,6 +399,7 @@ class PetWindow(QWidget):
         self.pet_profile['character_pack'] = pack.pack_id
         if pack.animations:
             self.animation_states = list(pack.animations.keys())
+        self._frame_size_cache = None
         width, height = self._calculate_sprite_geometry(self.base_pet_size)
         self._apply_window_geometry(width, height)
         self._ensure_layered_window_safe()
@@ -513,7 +596,7 @@ class PetWindow(QWidget):
                     self.current_animation = animation_name
                     print(f"[宠物] 加载动画(缓存): {animation_name}.gif")
                     self._log_debug(f"动画缓存命中 GIF -> {animation_name}")
-                    return True
+                    return self._animation_load_succeeded()
                     
                 elif cached['type'] == 'png':
                     # 使用缓存的PNG
@@ -528,7 +611,7 @@ class PetWindow(QWidget):
                     self.current_animation = animation_name
                     print(f"[宠物] 加载图片(缓存): {animation_name}.png")
                     self._log_debug(f"动画缓存命中 PNG -> {animation_name}")
-                    return True
+                    return self._animation_load_succeeded()
                 
                 elif cached['type'] == 'frames':
                     self._start_frame_animation(
@@ -538,7 +621,7 @@ class PetWindow(QWidget):
                     )
                     print(f"[宠物] 加载帧动画(缓存): {animation_name}")
                     self._log_debug(f"动画缓存命中 FRAMES -> {animation_name}")
-                    return True
+                    return self._animation_load_succeeded()
             
             # 如果缓存中没有，尝试直接加载（降级方案）
             print(f"[宠物] 未缓存，尝试直接加载: {animation_name}")
@@ -566,7 +649,7 @@ class PetWindow(QWidget):
                 self.current_animation = animation_name
                 print(f"[宠物] 加载动画: {animation_name}.gif")
                 self._log_debug(f"GIF 加载成功 -> {animation_name}, speed={speed}%")
-                return True
+                return self._animation_load_succeeded()
             
             # 尝试加载PNG图片
             png_path = get_resource_path(f"assets/images/default/{animation_name}.png")
@@ -583,7 +666,7 @@ class PetWindow(QWidget):
                     self.current_animation = animation_name
                     print(f"[宠物] 加载图片: {animation_name}.png")
                     self._log_debug(f"PNG 加载成功 -> {animation_name}")
-                    return True
+                    return self._animation_load_succeeded()
             
             # 所有尝试失败，使用降级方案
             print(f"[宠物] 警告：未找到动画文件: {animation_name}")
@@ -618,17 +701,17 @@ class PetWindow(QWidget):
                     self._prepare_movie(self.movie)
                     self.pet_label.setMovie(self.movie)
                     self.movie.start()
-                    return True
+                    return self._animation_load_succeeded()
                 elif cached['type'] == 'png':
                     self.pet_label.setPixmap(cached['pixmap'].scaled(
                         self.pet_label.size(),
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     ))
-                    return True
+                    return self._animation_load_succeeded()
                 elif cached['type'] == 'frames':
                     self._start_frame_animation('idle', cached['frames'], cached.get('loop', True))
-                    return True
+                    return self._animation_load_succeeded()
             
             # 最终降级：显示文字
             print(f"[宠物] 最终降级：显示文字表情")
@@ -654,7 +737,7 @@ class PetWindow(QWidget):
                     color: #333;
                 }
             """)
-            return True
+            return self._animation_load_succeeded()
             
         except Exception as e:
             print(f"[宠物] 错误：降级方案也失败了: {e}")
