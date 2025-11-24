@@ -10,23 +10,27 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import sys
 
-# Neumorphism 颜色常量
+# 现代化浅色主题颜色常量（类似 Clash Verge/Notion 风格）
 COLORS = {
-    'background': '#e0e5ec',     # 背景色（浅灰蓝）
-    'surface': '#e0e5ec',        # 表面色
+    'background': '#ffffff',     # 主背景色（白色）
+    'surface': '#f5f5f5',        # 次要背景色（浅灰）
     'primary': '#6366f1',        # 主色调（紫蓝色）
     'primary_dark': '#4f46e5',   # 深色主色调
-    'primary_light': '#a5b4fc',  # 浅色主色调
+    'primary_light': '#e0e7ff',  # 浅色主色调（用于hover）
     'accent': '#ec4899',         # 强调色（粉红）
-    'text_primary': '#4a5568',   # 主要文本（深灰）
-    'text_secondary': '#718096', # 次要文本（中灰）
-    'shadow_dark': '#a3b1c6',    # 深色阴影
-    'shadow_light': '#ffffff',   # 浅色阴影（高光）
-    'divider': '#cbd5e0',        # 分割线
-    'error': '#f56565',          # 错误色
-    'success': '#48bb78',        # 成功色
-    'warning': '#ed8936',        # 警告色
-    'info': '#6366f1',           # 信息色
+    'text_primary': '#333333',   # 主要文本（深灰）
+    'text_secondary': '#666666',  # 次要文本（中灰）
+    'border': '#e0e0e0',         # 边框色
+    'divider': '#e0e0e0',        # 分割线
+    'hover': '#f5f5f5',          # hover背景色
+    'selected': '#e3f2fd',       # 选中背景色
+    'error': '#f44336',          # 错误色
+    'success': '#4caf50',        # 成功色
+    'warning': '#ff9800',        # 警告色
+    'info': '#2196f3',           # 信息色
+    # 保留旧字段以兼容性
+    'shadow_dark': '#e0e0e0',    # 不再使用阴影，改为边框色
+    'shadow_light': '#ffffff',   # 不再使用阴影
 }
 
 class ModernCard(QFrame):
@@ -38,12 +42,10 @@ class ModernCard(QFrame):
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             ModernCard {{
-                background-color: {COLORS['surface']};
-                border-radius: 20px;
-                border: none;
+                background-color: {COLORS['background']};
+                border-radius: 8px;
+                border: 1px solid {COLORS['border']};
                 padding: 20px;
-                box-shadow: 9px 9px 16px {COLORS['shadow_dark']}, 
-                           -9px -9px 16px {COLORS['shadow_light']};
             }}
         """)
 
@@ -56,6 +58,34 @@ class ModernButton(QPushButton):
         self.setMinimumHeight(40)
         self.setCursor(Qt.PointingHandCursor)
         self.apply_style()
+        # 添加点击动画效果
+        self.pressed.connect(self._on_pressed)
+        self.released.connect(self._on_released)
+    
+    def _on_pressed(self):
+        """按下时的动画效果"""
+        from PyQt5.QtCore import QPropertyAnimation, QEasingCurve
+        self.animation = QPropertyAnimation(self, b"geometry")
+        self.animation.setDuration(100)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)
+        current_rect = self.geometry()
+        self.animation.setStartValue(current_rect)
+        # 轻微缩小
+        self.animation.setEndValue(current_rect.adjusted(1, 1, -1, -1))
+        self.animation.start()
+    
+    def _on_released(self):
+        """释放时的动画效果"""
+        if hasattr(self, 'animation'):
+            from PyQt5.QtCore import QPropertyAnimation, QEasingCurve
+            self.animation = QPropertyAnimation(self, b"geometry")
+            self.animation.setDuration(100)
+            self.animation.setEasingCurve(QEasingCurve.OutCubic)
+            current_rect = self.geometry()
+            self.animation.setStartValue(current_rect)
+            # 恢复原大小
+            self.animation.setEndValue(current_rect.adjusted(-1, -1, 1, 1))
+            self.animation.start()
     
     def apply_style(self):
         if self.style_type == "primary":
@@ -64,19 +94,17 @@ class ModernButton(QPushButton):
                     background: {COLORS['primary']};
                     color: white;
                     border: none;
-                    border-radius: 12px;
+                    border-radius: 8px;
                     padding: 12px 24px;
                     font-weight: 600;
                     font-size: 14px;
-                    box-shadow: 4px 4px 8px {COLORS['shadow_dark']}, 
-                               -4px -4px 8px {COLORS['shadow_light']};
                 }}
                 ModernButton:hover {{
                     background: {COLORS['primary_dark']};
                 }}
                 ModernButton:pressed {{
-                    box-shadow: inset 2px 2px 5px {COLORS['shadow_dark']}, 
-                               inset -2px -2px 5px {COLORS['shadow_light']};
+                    background: {COLORS['primary_dark']};
+                    opacity: 0.9;
                 }}
             """)
         elif self.style_type == "secondary":
@@ -84,20 +112,18 @@ class ModernButton(QPushButton):
                 ModernButton {{
                     background: {COLORS['surface']};
                     color: {COLORS['text_primary']};
-                    border: none;
-                    border-radius: 12px;
+                    border: 1px solid {COLORS['border']};
+                    border-radius: 8px;
                     padding: 12px 24px;
-                    font-weight: 600;
+                    font-weight: 500;
                     font-size: 14px;
-                    box-shadow: 4px 4px 8px {COLORS['shadow_dark']}, 
-                               -4px -4px 8px {COLORS['shadow_light']};
                 }}
                 ModernButton:hover {{
-                    background: {COLORS['background']};
+                    background: {COLORS['hover']};
+                    border-color: {COLORS['primary']};
                 }}
                 ModernButton:pressed {{
-                    box-shadow: inset 2px 2px 5px {COLORS['shadow_dark']}, 
-                               inset -2px -2px 5px {COLORS['shadow_light']};
+                    background: {COLORS['border']};
                 }}
             """)
 
@@ -110,19 +136,19 @@ class ModernInput(QLineEdit):
         self.setMinimumHeight(40)
         self.setStyleSheet(f"""
             ModernInput {{
-                background: {COLORS['surface']};
-                border: none;
-                border-radius: 12px;
+                background: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
                 padding: 12px 16px;
                 font-size: 14px;
                 color: {COLORS['text_primary']};
-                box-shadow: inset 3px 3px 6px {COLORS['shadow_dark']}, 
-                           inset -3px -3px 6px {COLORS['shadow_light']};
             }}
             ModernInput:focus {{
-                box-shadow: inset 4px 4px 8px {COLORS['shadow_dark']}, 
-                           inset -4px -4px 8px {COLORS['shadow_light']},
-                           0 0 0 2px {COLORS['primary']};
+                border: 2px solid {COLORS['primary']};
+                outline: none;
+            }}
+            ModernInput:hover {{
+                border-color: {COLORS['primary_light']};
             }}
         """)
 
@@ -132,28 +158,40 @@ class ModernComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(40)
-        self.setStyleSheet("""
-            ModernComboBox {
-                border: 2px solid #E0E0E0;
-                border-radius: 8px;
+        self.setStyleSheet(f"""
+            ModernComboBox {{
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
                 padding: 8px 12px;
-                background-color: white;
+                background-color: {COLORS['background']};
                 font-size: 14px;
-            }
-            ModernComboBox:focus {
-                border-color: #2196F3;
-            }
-            ModernComboBox::drop-down {
+                color: {COLORS['text_primary']};
+            }}
+            ModernComboBox:focus {{
+                border: 2px solid {COLORS['primary']};
+                outline: none;
+            }}
+            ModernComboBox:hover {{
+                border-color: {COLORS['primary_light']};
+            }}
+            ModernComboBox::drop-down {{
                 border: none;
                 width: 30px;
-            }
-            ModernComboBox::down-arrow {
+            }}
+            ModernComboBox::down-arrow {{
                 image: none;
                 border-left: 5px solid transparent;
                 border-right: 5px solid transparent;
-                border-top: 5px solid #666;
+                border-top: 5px solid {COLORS['text_secondary']};
                 margin-right: 8px;
-            }
+            }}
+            ModernComboBox QAbstractItemView {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
+                selection-background-color: {COLORS['selected']};
+                selection-color: {COLORS['primary']};
+            }}
         """)
 
 class ModernProgressBar(QProgressBar):
@@ -180,31 +218,35 @@ class ModernTabWidget(QTabWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("""
-            ModernTabWidget::pane {
-                border: 1px solid #E0E0E0;
+        self.setStyleSheet(f"""
+            ModernTabWidget::pane {{
+                border: 1px solid {COLORS['border']};
                 border-radius: 8px;
-                background-color: white;
-            }
-            ModernTabWidget::tab-bar {
+                background-color: {COLORS['background']};
+                top: -1px;
+            }}
+            ModernTabWidget::tab-bar {{
                 alignment: left;
-            }
-            ModernTabWidget::tab {
-                background-color: #F5F5F5;
-                color: #666;
+            }}
+            ModernTabWidget::tab {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_secondary']};
                 padding: 8px 16px;
                 margin-right: 2px;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
-            }
-            ModernTabWidget::tab:selected {
-                background-color: white;
-                color: #2196F3;
-                border-bottom: 2px solid #2196F3;
-            }
-            ModernTabWidget::tab:hover {
-                background-color: #EEEEEE;
-            }
+                border: none;
+            }}
+            ModernTabWidget::tab:selected {{
+                background-color: {COLORS['background']};
+                color: {COLORS['primary']};
+                border-bottom: 2px solid {COLORS['primary']};
+                font-weight: 600;
+            }}
+            ModernTabWidget::tab:hover {{
+                background-color: {COLORS['hover']};
+                color: {COLORS['text_primary']};
+            }}
         """)
 
 class ModernWindow(QWidget):
@@ -456,20 +498,23 @@ class ModernTableWidget(QTableWidget):
         super().__init__(parent)
         self.setStyleSheet(f"""
             ModernTableWidget {{
-                background-color: {COLORS['surface']};
-                border: none;
-                border-radius: 16px;
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
                 gridline-color: {COLORS['divider']};
-                selection-background-color: {COLORS['primary_light']};
-                alternate-background-color: {COLORS['background']};
+                selection-background-color: {COLORS['selected']};
+                alternate-background-color: {COLORS['surface']};
             }}
             ModernTableWidget::item {{
                 padding: 12px;
                 border-bottom: 1px solid {COLORS['divider']};
             }}
             ModernTableWidget::item:selected {{
-                background-color: {COLORS['primary_light']};
-                color: {COLORS['primary_dark']};
+                background-color: {COLORS['selected']};
+                color: {COLORS['primary']};
+            }}
+            ModernTableWidget::item:hover {{
+                background-color: {COLORS['hover']};
             }}
             ModernTableWidget QHeaderView::section {{
                 background-color: {COLORS['surface']};
@@ -477,7 +522,7 @@ class ModernTableWidget(QTableWidget):
                 border: none;
                 border-bottom: 2px solid {COLORS['divider']};
                 padding: 12px;
-                font-weight: 700;
+                font-weight: 600;
             }}
         """)
 
@@ -511,19 +556,19 @@ class ModernTextEdit(QTextEdit):
         super().__init__(parent)
         self.setStyleSheet(f"""
             ModernTextEdit {{
-                background: {COLORS['surface']};
-                border: none;
-                border-radius: 16px;
+                background: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 6px;
                 padding: 12px;
                 font-size: 14px;
                 color: {COLORS['text_primary']};
-                box-shadow: inset 3px 3px 6px {COLORS['shadow_dark']}, 
-                           inset -3px -3px 6px {COLORS['shadow_light']};
             }}
             ModernTextEdit:focus {{
-                box-shadow: inset 4px 4px 8px {COLORS['shadow_dark']}, 
-                           inset -4px -4px 8px {COLORS['shadow_light']},
-                           0 0 0 2px {COLORS['primary']};
+                border: 2px solid {COLORS['primary']};
+                outline: none;
+            }}
+            ModernTextEdit:hover {{
+                border-color: {COLORS['primary_light']};
             }}
         """)
 
@@ -571,18 +616,18 @@ class ModernCheckBox(QCheckBox):
                 spacing: 10px;
             }}
             ModernCheckBox::indicator {{
-                width: 22px;
-                height: 22px;
-                border: none;
-                border-radius: 6px;
-                background: {COLORS['surface']};
-                box-shadow: inset 2px 2px 4px {COLORS['shadow_dark']}, 
-                           inset -2px -2px 4px {COLORS['shadow_light']};
+                width: 20px;
+                height: 20px;
+                border: 1px solid {COLORS['border']};
+                border-radius: 4px;
+                background: {COLORS['background']};
+            }}
+            ModernCheckBox::indicator:hover {{
+                border-color: {COLORS['primary']};
             }}
             ModernCheckBox::indicator:checked {{
                 background: {COLORS['primary']};
-                box-shadow: 2px 2px 4px {COLORS['shadow_dark']}, 
-                           -2px -2px 4px {COLORS['shadow_light']};
+                border-color: {COLORS['primary']};
                 image: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iMTIiIHZpZXdCb3g9IjAgMCAxMiAxMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEwIDNMNC41IDguNUwyIDYiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=);
             }}
         """)

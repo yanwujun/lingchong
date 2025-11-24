@@ -806,47 +806,75 @@ class PetWindow(QWidget):
         try:
             # 优先使用已有的窗口引用
             if self.achievements_window:
+                print("[系统] 使用已有成就窗口引用")
                 self.achievements_window.show()
                 self.achievements_window.raise_()
                 self.achievements_window.activateWindow()
+                return
+            
             # 如果窗口不存在，尝试通过主程序打开
-            elif self.main_app and hasattr(self.main_app, 'show_achievements'):
-                self.main_app.show_achievements()
-                # 更新窗口引用
-                if hasattr(self.main_app, 'achievements_window'):
-                    self.achievements_window = self.main_app.achievements_window
-            # 如果主程序也不可用，尝试延迟创建
-            else:
+            if self.main_app and hasattr(self.main_app, 'show_achievements'):
+                print("[系统] 通过主程序打开成就窗口")
                 try:
-                    from src.pet_achievements import AchievementsWindow
-                    from PyQt5.QtWidgets import QApplication
-                    
-                    # 获取数据库和宠物ID（需要从主程序获取）
-                    if self.main_app and hasattr(self.main_app, 'database'):
-                        database = self.main_app.database
-                        pet_id = self.pet_id
-                        if not pet_id and hasattr(self.main_app, 'pet_manager'):
-                            active_pet = self.main_app.pet_manager.get_active_pet() if self.main_app.pet_manager else None
-                            pet_id = active_pet['id'] if active_pet else None
-                        
-                        self.achievements_window = AchievementsWindow(database=database, pet_id=pet_id)
-                        if hasattr(self.achievements_window, 'load_achievements'):
-                            self.achievements_window.load_achievements()
-                        self.achievements_window.show()
-                        self.achievements_window.raise_()
-                        self.achievements_window.activateWindow()
-                    else:
-                        from PyQt5.QtWidgets import QMessageBox
-                        QMessageBox.warning(self, "错误", "无法打开成就窗口：数据库未初始化")
-                        print("[警告] 成就窗口未初始化，且无法延迟创建")
+                    self.main_app.show_achievements()
+                    # 更新窗口引用
+                    if hasattr(self.main_app, 'achievements_window') and self.main_app.achievements_window:
+                        self.achievements_window = self.main_app.achievements_window
+                        print("[系统] 成就窗口引用已更新")
+                    return
                 except Exception as e:
-                    from PyQt5.QtWidgets import QMessageBox
-                    QMessageBox.warning(self, "错误", f"打开成就窗口失败：\n{str(e)}")
-                    print(f"[错误] 打开成就窗口失败: {e}")
+                    print(f"[错误] 主程序打开成就窗口失败: {e}")
                     import traceback
                     traceback.print_exc()
+            
+            # 如果主程序也不可用，尝试延迟创建
+            print("[系统] 尝试延迟创建成就窗口")
+            try:
+                from src.pet_achievements import AchievementsWindow
+                
+                # 获取数据库和宠物ID（需要从主程序获取）
+                if not self.main_app:
+                    raise Exception("主程序引用未设置")
+                
+                if not hasattr(self.main_app, 'database') or not self.main_app.database:
+                    raise Exception("数据库未初始化")
+                
+                database = self.main_app.database
+                pet_id = self.pet_id
+                if not pet_id and hasattr(self.main_app, 'pet_manager') and self.main_app.pet_manager:
+                    active_pet = self.main_app.pet_manager.get_active_pet()
+                    pet_id = active_pet['id'] if active_pet else None
+                
+                print(f"[系统] 创建成就窗口，pet_id={pet_id}")
+                self.achievements_window = AchievementsWindow(database=database, pet_id=pet_id)
+                
+                if hasattr(self.achievements_window, 'load_achievements'):
+                    self.achievements_window.load_achievements()
+                
+                self.achievements_window.show()
+                self.achievements_window.raise_()
+                self.achievements_window.activateWindow()
+                print("[系统] 成就窗口已成功打开")
+                
+            except ImportError as e:
+                from PyQt5.QtWidgets import QMessageBox
+                error_msg = f"无法导入成就窗口模块：\n{str(e)}"
+                QMessageBox.warning(self, "错误", error_msg)
+                print(f"[错误] {error_msg}")
+                import traceback
+                traceback.print_exc()
+            except Exception as e:
+                from PyQt5.QtWidgets import QMessageBox
+                error_msg = f"打开成就窗口失败：\n{str(e)}"
+                QMessageBox.warning(self, "错误", error_msg)
+                print(f"[错误] {error_msg}")
+                import traceback
+                traceback.print_exc()
         except Exception as e:
-            print(f"[错误] 打开成就窗口异常: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            error_msg = f"打开成就窗口时发生未预期的错误：\n{str(e)}"
+            QMessageBox.critical(self, "严重错误", error_msg)
+            print(f"[严重错误] {error_msg}")
             import traceback
             traceback.print_exc()
     
@@ -856,54 +884,83 @@ class PetWindow(QWidget):
         try:
             # 优先使用已有的窗口引用
             if self.inventory_window:
+                print("[系统] 使用已有背包窗口引用")
                 self.inventory_window.show()
                 self.inventory_window.raise_()
                 self.inventory_window.activateWindow()
+                return
+            
             # 如果窗口不存在，尝试通过主程序打开
-            elif self.main_app and hasattr(self.main_app, 'show_inventory'):
-                self.main_app.show_inventory()
-                # 更新窗口引用
-                if hasattr(self.main_app, 'inventory_window'):
-                    self.inventory_window = self.main_app.inventory_window
-            # 如果主程序也不可用，尝试延迟创建
-            else:
+            if self.main_app and hasattr(self.main_app, 'show_inventory'):
+                print("[系统] 通过主程序打开背包窗口")
                 try:
-                    from src.pet_inventory import InventoryWindow
-                    
-                    # 获取数据库和宠物ID（需要从主程序获取）
-                    if self.main_app and hasattr(self.main_app, 'database'):
-                        database = self.main_app.database
-                        pet_id = self.pet_id
-                        if not pet_id and hasattr(self.main_app, 'pet_manager'):
-                            active_pet = self.main_app.pet_manager.get_active_pet() if self.main_app.pet_manager else None
-                            pet_id = active_pet['id'] if active_pet else None
-                        
-                        growth_system = None
-                        if hasattr(self.main_app, 'pet_growth'):
-                            growth_system = self.main_app.pet_growth
-                        
-                        self.inventory_window = InventoryWindow(
-                            database=database,
-                            pet_id=pet_id,
-                            growth_system=growth_system
-                        )
-                        if hasattr(self.inventory_window, 'load_inventory'):
-                            self.inventory_window.load_inventory()
-                        self.inventory_window.show()
-                        self.inventory_window.raise_()
-                        self.inventory_window.activateWindow()
-                    else:
-                        from PyQt5.QtWidgets import QMessageBox
-                        QMessageBox.warning(self, "错误", "无法打开背包窗口：数据库未初始化")
-                        print("[警告] 背包窗口未初始化，且无法延迟创建")
+                    self.main_app.show_inventory()
+                    # 更新窗口引用
+                    if hasattr(self.main_app, 'inventory_window') and self.main_app.inventory_window:
+                        self.inventory_window = self.main_app.inventory_window
+                        print("[系统] 背包窗口引用已更新")
+                    return
                 except Exception as e:
-                    from PyQt5.QtWidgets import QMessageBox
-                    QMessageBox.warning(self, "错误", f"打开背包窗口失败：\n{str(e)}")
-                    print(f"[错误] 打开背包窗口失败: {e}")
+                    print(f"[错误] 主程序打开背包窗口失败: {e}")
                     import traceback
                     traceback.print_exc()
+            
+            # 如果主程序也不可用，尝试延迟创建
+            print("[系统] 尝试延迟创建背包窗口")
+            try:
+                from src.pet_inventory import InventoryWindow
+                
+                # 获取数据库和宠物ID（需要从主程序获取）
+                if not self.main_app:
+                    raise Exception("主程序引用未设置")
+                
+                if not hasattr(self.main_app, 'database') or not self.main_app.database:
+                    raise Exception("数据库未初始化")
+                
+                database = self.main_app.database
+                pet_id = self.pet_id
+                if not pet_id and hasattr(self.main_app, 'pet_manager') and self.main_app.pet_manager:
+                    active_pet = self.main_app.pet_manager.get_active_pet()
+                    pet_id = active_pet['id'] if active_pet else None
+                
+                growth_system = None
+                if hasattr(self.main_app, 'pet_growth'):
+                    growth_system = self.main_app.pet_growth
+                
+                print(f"[系统] 创建背包窗口，pet_id={pet_id}")
+                self.inventory_window = InventoryWindow(
+                    database=database,
+                    pet_id=pet_id,
+                    growth_system=growth_system
+                )
+                
+                if hasattr(self.inventory_window, 'load_inventory'):
+                    self.inventory_window.load_inventory()
+                
+                self.inventory_window.show()
+                self.inventory_window.raise_()
+                self.inventory_window.activateWindow()
+                print("[系统] 背包窗口已成功打开")
+                
+            except ImportError as e:
+                from PyQt5.QtWidgets import QMessageBox
+                error_msg = f"无法导入背包窗口模块：\n{str(e)}"
+                QMessageBox.warning(self, "错误", error_msg)
+                print(f"[错误] {error_msg}")
+                import traceback
+                traceback.print_exc()
+            except Exception as e:
+                from PyQt5.QtWidgets import QMessageBox
+                error_msg = f"打开背包窗口失败：\n{str(e)}"
+                QMessageBox.warning(self, "错误", error_msg)
+                print(f"[错误] {error_msg}")
+                import traceback
+                traceback.print_exc()
         except Exception as e:
-            print(f"[错误] 打开背包窗口异常: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            error_msg = f"打开背包窗口时发生未预期的错误：\n{str(e)}"
+            QMessageBox.critical(self, "严重错误", error_msg)
+            print(f"[严重错误] {error_msg}")
             import traceback
             traceback.print_exc()
     
@@ -913,49 +970,78 @@ class PetWindow(QWidget):
         try:
             # 优先使用已有的窗口引用
             if self.shop_window:
+                print("[系统] 使用已有商店窗口引用")
                 self.shop_window.show()
                 self.shop_window.raise_()
                 self.shop_window.activateWindow()
+                return
+            
             # 如果窗口不存在，尝试通过主程序打开
-            elif self.main_app and hasattr(self.main_app, 'show_shop'):
-                self.main_app.show_shop()
-                # 更新窗口引用
-                if hasattr(self.main_app, 'shop_window'):
-                    self.shop_window = self.main_app.shop_window
-            # 如果主程序也不可用，尝试延迟创建
-            else:
+            if self.main_app and hasattr(self.main_app, 'show_shop'):
+                print("[系统] 通过主程序打开商店窗口")
                 try:
-                    from src.pet_shop import PetShopWindow
-                    
-                    # 获取数据库和宠物ID（需要从主程序获取）
-                    if self.main_app and hasattr(self.main_app, 'database'):
-                        database = self.main_app.database
-                        pet_id = self.pet_id
-                        if not pet_id and hasattr(self.main_app, 'pet_manager'):
-                            active_pet = self.main_app.pet_manager.get_active_pet() if self.main_app.pet_manager else None
-                            pet_id = active_pet['id'] if active_pet else None
-                        
-                        self.shop_window = PetShopWindow(
-                            database=database,
-                            pet_id=pet_id
-                        )
-                        if hasattr(self.shop_window, 'load_points'):
-                            self.shop_window.load_points()
-                        self.shop_window.show()
-                        self.shop_window.raise_()
-                        self.shop_window.activateWindow()
-                    else:
-                        from PyQt5.QtWidgets import QMessageBox
-                        QMessageBox.warning(self, "错误", "无法打开商店窗口：数据库未初始化")
-                        print("[警告] 商店窗口未初始化，且无法延迟创建")
+                    self.main_app.show_shop()
+                    # 更新窗口引用
+                    if hasattr(self.main_app, 'shop_window') and self.main_app.shop_window:
+                        self.shop_window = self.main_app.shop_window
+                        print("[系统] 商店窗口引用已更新")
+                    return
                 except Exception as e:
-                    from PyQt5.QtWidgets import QMessageBox
-                    QMessageBox.warning(self, "错误", f"打开商店窗口失败：\n{str(e)}")
-                    print(f"[错误] 打开商店窗口失败: {e}")
+                    print(f"[错误] 主程序打开商店窗口失败: {e}")
                     import traceback
                     traceback.print_exc()
+            
+            # 如果主程序也不可用，尝试延迟创建
+            print("[系统] 尝试延迟创建商店窗口")
+            try:
+                from src.pet_shop import PetShopWindow
+                
+                # 获取数据库和宠物ID（需要从主程序获取）
+                if not self.main_app:
+                    raise Exception("主程序引用未设置")
+                
+                if not hasattr(self.main_app, 'database') or not self.main_app.database:
+                    raise Exception("数据库未初始化")
+                
+                database = self.main_app.database
+                pet_id = self.pet_id
+                if not pet_id and hasattr(self.main_app, 'pet_manager') and self.main_app.pet_manager:
+                    active_pet = self.main_app.pet_manager.get_active_pet()
+                    pet_id = active_pet['id'] if active_pet else None
+                
+                print(f"[系统] 创建商店窗口，pet_id={pet_id}")
+                self.shop_window = PetShopWindow(
+                    database=database,
+                    pet_id=pet_id
+                )
+                
+                if hasattr(self.shop_window, 'load_points'):
+                    self.shop_window.load_points()
+                
+                self.shop_window.show()
+                self.shop_window.raise_()
+                self.shop_window.activateWindow()
+                print("[系统] 商店窗口已成功打开")
+                
+            except ImportError as e:
+                from PyQt5.QtWidgets import QMessageBox
+                error_msg = f"无法导入商店窗口模块：\n{str(e)}"
+                QMessageBox.warning(self, "错误", error_msg)
+                print(f"[错误] {error_msg}")
+                import traceback
+                traceback.print_exc()
+            except Exception as e:
+                from PyQt5.QtWidgets import QMessageBox
+                error_msg = f"打开商店窗口失败：\n{str(e)}"
+                QMessageBox.warning(self, "错误", error_msg)
+                print(f"[错误] {error_msg}")
+                import traceback
+                traceback.print_exc()
         except Exception as e:
-            print(f"[错误] 打开商店窗口异常: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            error_msg = f"打开商店窗口时发生未预期的错误：\n{str(e)}"
+            QMessageBox.critical(self, "严重错误", error_msg)
+            print(f"[严重错误] {error_msg}")
             import traceback
             traceback.print_exc()
     

@@ -699,6 +699,7 @@ class DesktopPetApp:
         """显示商店窗口 [v0.4.0]"""
         try:
             if not self.shop_window:
+                print("[应用] 创建商店窗口")
                 from src.pet_shop import PetShopWindow
                 active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
                 pet_id = active_pet['id'] if active_pet else None
@@ -706,12 +707,20 @@ class DesktopPetApp:
                     database=self.database,
                     pet_id=pet_id
                 )
+                print(f"[应用] 商店窗口已创建，pet_id={pet_id}")
             
             if hasattr(self.shop_window, 'load_points'):
                 self.shop_window.load_points()
             self.shop_window.show()
             self.shop_window.raise_()
             self.shop_window.activateWindow()
+            print("[应用] 商店窗口已显示")
+        except ImportError as e:
+            print(f"[应用] 无法导入商店窗口模块: {e}")
+            import traceback
+            traceback.print_exc()
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(None, "错误", f"无法导入商店窗口模块：\n{str(e)}")
         except Exception as e:
             print(f"[应用] 打开商店窗口失败: {e}")
             import traceback

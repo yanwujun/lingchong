@@ -56,12 +56,12 @@ class TaskDialog(QDialog):
         self.setWindowTitle("编辑任务" if self.task_data else "添加任务")
         self.setFixedSize(500, 500)  # [v0.3.0] 增加高度以容纳标签组件
         
-        # 应用浅色主题
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #ffffff;
-                color: #333333;
-            }
+        # 应用现代化浅色主题
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLORS['background']};
+                color: {COLORS['text_primary']};
+            }}
         """)
         
         layout = QFormLayout()
@@ -261,6 +261,7 @@ class TodoWindow(QWidget):
         self.statistics_window = None  # 统计窗口引用 [v0.3.0]
         self.current_category = None  # 当前选中的分类
         self.current_tag_id = None  # 当前选中的标签ID
+        self.current_search_keyword = None  # 当前搜索关键词
         self.tag_buttons = []  # 标签按钮列表
         self.current_view = 'list'  # 当前视图：list/timeline/calendar/kanban
         self.task_table = None  # 任务表格（列表视图）
@@ -279,12 +280,12 @@ class TodoWindow(QWidget):
         self.setWindowTitle("待办事项")
         self.setGeometry(100, 100, 1000, 700)
         
-        # 应用浅色主题背景（类似Clash Verge）
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #ffffff;
-                color: #333333;
-            }
+        # 应用现代化浅色主题
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['background']};
+                color: {COLORS['text_primary']};
+            }}
         """)
         
         # 主布局（水平布局：左侧边栏 + 主内容区）
@@ -311,12 +312,12 @@ class TodoWindow(QWidget):
     def create_sidebar(self):
         """创建左侧边栏（分类导航）"""
         sidebar = QWidget()
-        sidebar.setFixedWidth(200)
-        sidebar.setStyleSheet("""
-            QWidget {
-                background-color: #f5f5f5;
-                border-right: 1px solid #e0e0e0;
-            }
+        sidebar.setFixedWidth(220)
+        sidebar.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['surface']};
+                border-right: 1px solid {COLORS['border']};
+            }}
         """)
         
         sidebar_layout = QVBoxLayout()
@@ -557,8 +558,8 @@ class TodoWindow(QWidget):
         """)
         
         list_layout = QVBoxLayout()
-        list_layout.setContentsMargins(20, 20, 20, 20)
-        list_layout.setSpacing(15)
+        list_layout.setContentsMargins(20, 15, 20, 15)
+        list_layout.setSpacing(12)
         
         # 顶部标题栏
         header = self.create_header()
@@ -585,33 +586,39 @@ class TodoWindow(QWidget):
         # 双击编辑
         self.task_table.doubleClicked.connect(self.edit_task)
         
-        # 应用浅色主题样式
-        self.task_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+        # 设置表格行高
+        self.task_table.verticalHeader().setDefaultSectionSize(40)
+        
+        # 应用现代化主题样式
+        self.task_table.setStyleSheet(f"""
+            QTableWidget {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 8px;
-                gridline-color: #f0f0f0;
-                selection-background-color: #e3f2fd;
-                alternate-background-color: #fafafa;
-            }
-            QTableWidget::item {
+                gridline-color: {COLORS['divider']};
+                selection-background-color: {COLORS['selected']};
+                alternate-background-color: {COLORS['surface']};
+            }}
+            QTableWidget::item {{
                 padding: 10px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QTableWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
-            }
-            QTableWidget QHeaderView::section {
-                background-color: #fafafa;
-                color: #333333;
+                border-bottom: 1px solid {COLORS['divider']};
+            }}
+            QTableWidget::item:selected {{
+                background-color: {COLORS['selected']};
+                color: {COLORS['primary']};
+            }}
+            QTableWidget::item:hover {{
+                background-color: {COLORS['hover']};
+            }}
+            QTableWidget QHeaderView::section {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
                 border: none;
-                border-bottom: 2px solid #e0e0e0;
+                border-bottom: 2px solid {COLORS['divider']};
                 padding: 12px;
                 font-weight: 600;
                 font-size: 13px;
-            }
+            }}
         """)
         
         list_layout.addWidget(self.task_table)
@@ -626,48 +633,48 @@ class TodoWindow(QWidget):
     def create_timeline_view(self):
         """创建时间轴视图"""
         timeline_widget = QWidget()
-        timeline_widget.setStyleSheet("""
-            QWidget {
-                background-color: #ffffff;
-            }
+        timeline_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['background']};
+            }}
         """)
         
         timeline_layout = QVBoxLayout()
-        timeline_layout.setContentsMargins(20, 20, 20, 20)
-        timeline_layout.setSpacing(10)
+        timeline_layout.setContentsMargins(20, 15, 20, 15)
+        timeline_layout.setSpacing(12)
         
         # 标题
         title_label = QLabel("时间轴视图")
-        title_label.setStyleSheet("""
-            QLabel {
+        title_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 18px;
                 font-weight: bold;
-                color: #333333;
+                color: {COLORS['text_primary']};
                 padding: 10px 0;
-            }
+            }}
         """)
         timeline_layout.addWidget(title_label)
         
         # 时间轴树
         self.timeline_tree = QTreeWidget()
         self.timeline_tree.setHeaderLabels(["任务", "状态"])
-        self.timeline_tree.setStyleSheet("""
-            QTreeWidget {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+        self.timeline_tree.setStyleSheet(f"""
+            QTreeWidget {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 8px;
-            }
-            QTreeWidget::item {
+            }}
+            QTreeWidget::item {{
                 padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QTreeWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
-            }
-            QTreeWidget::item:hover {
-                background-color: #f5f5f5;
-            }
+                border-bottom: 1px solid {COLORS['divider']};
+            }}
+            QTreeWidget::item:selected {{
+                background-color: {COLORS['selected']};
+                color: {COLORS['primary']};
+            }}
+            QTreeWidget::item:hover {{
+                background-color: {COLORS['hover']};
+            }}
         """)
         self.timeline_tree.itemDoubleClicked.connect(self.on_timeline_item_double_clicked)
         timeline_layout.addWidget(self.timeline_tree)
@@ -683,40 +690,40 @@ class TodoWindow(QWidget):
     def create_calendar_view(self):
         """创建日历视图"""
         calendar_widget = QWidget()
-        calendar_widget.setStyleSheet("""
-            QWidget {
-                background-color: #ffffff;
-            }
+        calendar_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['background']};
+            }}
         """)
         
         calendar_layout = QVBoxLayout()
-        calendar_layout.setContentsMargins(20, 20, 20, 20)
-        calendar_layout.setSpacing(10)
+        calendar_layout.setContentsMargins(20, 15, 20, 15)
+        calendar_layout.setSpacing(12)
         
         # 标题
         title_label = QLabel("日历视图")
-        title_label.setStyleSheet("""
-            QLabel {
+        title_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 18px;
                 font-weight: bold;
-                color: #333333;
+                color: {COLORS['text_primary']};
                 padding: 10px 0;
-            }
+            }}
         """)
         calendar_layout.addWidget(title_label)
         
         # 日历组件
         self.calendar_widget = QCalendarWidget()
-        self.calendar_widget.setStyleSheet("""
-            QCalendarWidget {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+        self.calendar_widget.setStyleSheet(f"""
+            QCalendarWidget {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 8px;
-            }
-            QCalendarWidget QAbstractItemView:enabled {
-                selection-background-color: #1976d2;
+            }}
+            QCalendarWidget QAbstractItemView:enabled {{
+                selection-background-color: {COLORS['primary']};
                 selection-color: white;
-            }
+            }}
         """)
         self.calendar_widget.selectionChanged.connect(self.on_calendar_date_selected)
         self.calendar_widget.clicked.connect(self.on_calendar_date_selected)
@@ -724,20 +731,23 @@ class TodoWindow(QWidget):
         
         # 任务列表（选中日期的任务）
         self.calendar_task_list = QListWidget()
-        self.calendar_task_list.setStyleSheet("""
-            QListWidget {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+        self.calendar_task_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 8px;
-            }
-            QListWidget::item {
+            }}
+            QListWidget::item {{
                 padding: 8px;
-                border-bottom: 1px solid #f0f0f0;
-            }
-            QListWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
-            }
+                border-bottom: 1px solid {COLORS['divider']};
+            }}
+            QListWidget::item:selected {{
+                background-color: {COLORS['selected']};
+                color: {COLORS['primary']};
+            }}
+            QListWidget::item:hover {{
+                background-color: {COLORS['hover']};
+            }}
         """)
         self.calendar_task_list.itemDoubleClicked.connect(self.on_calendar_task_double_clicked)
         calendar_layout.addWidget(self.calendar_task_list)
@@ -753,25 +763,25 @@ class TodoWindow(QWidget):
     def create_kanban_view(self):
         """创建看板视图"""
         kanban_widget = QWidget()
-        kanban_widget.setStyleSheet("""
-            QWidget {
-                background-color: #ffffff;
-            }
+        kanban_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['background']};
+            }}
         """)
         
         kanban_layout = QVBoxLayout()
-        kanban_layout.setContentsMargins(20, 20, 20, 20)
-        kanban_layout.setSpacing(10)
+        kanban_layout.setContentsMargins(20, 15, 20, 15)
+        kanban_layout.setSpacing(12)
         
         # 标题
         title_label = QLabel("看板视图")
-        title_label.setStyleSheet("""
-            QLabel {
+        title_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 18px;
                 font-weight: bold;
-                color: #333333;
+                color: {COLORS['text_primary']};
                 padding: 10px 0;
-            }
+            }}
         """)
         kanban_layout.addWidget(title_label)
         
@@ -803,52 +813,52 @@ class TodoWindow(QWidget):
     def create_kanban_column(self, title, status_key):
         """创建看板列"""
         column_widget = QWidget()
-        column_widget.setStyleSheet("""
-            QWidget {
-                background-color: #f5f5f5;
+        column_widget.setStyleSheet(f"""
+            QWidget {{
+                background-color: {COLORS['surface']};
                 border-radius: 8px;
-            }
+            }}
         """)
         
         column_layout = QVBoxLayout()
         column_layout.setContentsMargins(10, 10, 10, 10)
-        column_layout.setSpacing(5)
+        column_layout.setSpacing(10)
         
         # 列标题
         title_label = QLabel(title)
-        title_label.setStyleSheet("""
-            QLabel {
+        title_label.setStyleSheet(f"""
+            QLabel {{
                 font-size: 16px;
                 font-weight: bold;
-                color: #333333;
+                color: {COLORS['text_primary']};
                 padding: 5px;
-            }
+            }}
         """)
         column_layout.addWidget(title_label)
         
         # 任务列表
         task_list = QListWidget()
-        task_list.setStyleSheet("""
-            QListWidget {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
+        task_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 6px;
                 min-height: 400px;
-            }
-            QListWidget::item {
-                background-color: white;
-                border: 1px solid #e0e0e0;
+            }}
+            QListWidget::item {{
+                background-color: {COLORS['background']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 4px;
                 padding: 8px;
                 margin: 3px;
-            }
-            QListWidget::item:selected {
-                background-color: #e3f2fd;
-                border-color: #1976d2;
-            }
-            QListWidget::item:hover {
-                background-color: #f5f5f5;
-            }
+            }}
+            QListWidget::item:selected {{
+                background-color: {COLORS['selected']};
+                border-color: {COLORS['primary']};
+            }}
+            QListWidget::item:hover {{
+                background-color: {COLORS['hover']};
+            }}
         """)
         task_list.itemDoubleClicked.connect(self.on_kanban_task_double_clicked)
         task_list.setDragDropMode(QListWidget.DragDrop)
@@ -868,32 +878,59 @@ class TodoWindow(QWidget):
             view_names = ['list', 'timeline', 'calendar', 'kanban']
             if 0 <= index < len(view_names):
                 old_view = self.current_view
-                self.current_view = view_names[index]
-                print(f"[待办窗口] 切换到视图: {view_names[index]}")
+                new_view = view_names[index]
+                self.current_view = new_view
+                print(f"[待办窗口] 切换到视图: {new_view} (从 {old_view})")
+                
+                # 延迟刷新，确保UI组件已完全创建
+                QApplication.processEvents()
                 
                 # 刷新当前视图
                 self.refresh_current_view()
+            else:
+                print(f"[待办窗口] 无效的视图索引: {index}")
         except Exception as e:
             print(f"[待办窗口] 视图切换异常: {e}")
             import traceback
             traceback.print_exc()
             # 回退到列表视图
-            if self.view_tabs:
-                self.view_tabs.setCurrentIndex(0)
-                self.current_view = 'list'
+            try:
+                if self.view_tabs:
+                    self.view_tabs.setCurrentIndex(0)
+                    self.current_view = 'list'
+                    self.refresh_current_view()
+            except:
+                pass
     
     def refresh_current_view(self):
         """刷新当前视图"""
         try:
+            if not self.database:
+                print("[待办窗口] 数据库未初始化，无法刷新视图")
+                return
+            
             if self.current_view == 'list':
                 if self.task_table:
                     self.load_tasks()
+                else:
+                    print("[待办窗口] 任务表格未初始化")
             elif self.current_view == 'timeline':
-                self.refresh_timeline_view()
+                if self.timeline_tree:
+                    self.refresh_timeline_view()
+                else:
+                    print("[待办窗口] 时间轴树未初始化")
             elif self.current_view == 'calendar':
-                self.refresh_calendar_view()
+                if self.calendar_widget:
+                    self.refresh_calendar_view()
+                else:
+                    print("[待办窗口] 日历组件未初始化")
             elif self.current_view == 'kanban':
-                self.refresh_kanban_view()
+                if self.kanban_lists:
+                    self.refresh_kanban_view()
+                else:
+                    print("[待办窗口] 看板列表未初始化")
+            else:
+                print(f"[待办窗口] 未知视图: {self.current_view}")
         except Exception as e:
             print(f"[待办窗口] 刷新视图失败: {e}")
             import traceback
@@ -929,22 +966,23 @@ class TodoWindow(QWidget):
         
         # 添加任务按钮
         self.add_btn = QPushButton("+ 新增待办")
-        self.add_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1976d2;
+        self.add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['primary']};
                 color: white;
                 border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
+                border-radius: 8px;
+                padding: 10px 20px;
                 font-size: 14px;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #1565c0;
-            }
-            QPushButton:pressed {
-                background-color: #0d47a1;
-            }
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['primary_dark']};
+            }}
+            QPushButton:pressed {{
+                background-color: {COLORS['primary_dark']};
+                opacity: 0.9;
+            }}
         """)
         self.add_btn.clicked.connect(self.add_task)
         header_layout.addWidget(self.add_btn)
@@ -957,72 +995,81 @@ class TodoWindow(QWidget):
         
         # 工具栏
         toolbar_layout = QHBoxLayout()
+        toolbar_layout.setSpacing(10)
         
         # 编辑按钮
         self.edit_btn = QPushButton("✏️ 编辑")
-        self.edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                color: #333333;
-                border: 1px solid #e0e0e0;
+        self.edit_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #eeeeee;
-            }
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['hover']};
+                border-color: {COLORS['primary']};
+            }}
         """)
         self.edit_btn.clicked.connect(self.edit_task)
         
         # 删除按钮
         self.delete_btn = QPushButton("🗑️ 删除")
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                color: #333333;
-                border: 1px solid #e0e0e0;
+        self.delete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #eeeeee;
-            }
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['hover']};
+                border-color: {COLORS['error']};
+            }}
         """)
         self.delete_btn.clicked.connect(self.delete_task)
         
         # 完成按钮
         self.complete_btn = QPushButton("✅ 完成")
-        self.complete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                color: #333333;
-                border: 1px solid #e0e0e0;
+        self.complete_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #eeeeee;
-            }
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['hover']};
+                border-color: {COLORS['success']};
+            }}
         """)
         self.complete_btn.clicked.connect(self.complete_task)
         
         # 统计按钮
         self.stats_btn = QPushButton("📊 统计")
-        self.stats_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                color: #333333;
-                border: 1px solid #e0e0e0;
+        self.stats_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLORS['surface']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['border']};
                 border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: #eeeeee;
-            }
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {COLORS['hover']};
+                border-color: {COLORS['info']};
+            }}
         """)
         self.stats_btn.clicked.connect(self.show_statistics)
         
@@ -1265,7 +1312,22 @@ class TodoWindow(QWidget):
             tag_id = self.current_tag_id
         
         # 获取任务
-        tasks = self.database.get_all_tasks(status=status, category=category, tag_id=tag_id)
+        if self.current_search_keyword:
+            # 如果有搜索关键词，先搜索再筛选
+            tasks = self.database.search_tasks(self.current_search_keyword)
+            # 进一步按分类和标签筛选
+            filtered_tasks = []
+            for task in tasks:
+                if category and task.get('category') != category:
+                    continue
+                if tag_id:
+                    task_tags = self.database.get_task_tags(task['id'])
+                    if not any(tag['id'] == tag_id for tag in task_tags):
+                        continue
+                filtered_tasks.append(task)
+            tasks = filtered_tasks
+        else:
+            tasks = self.database.get_all_tasks(status=status, category=category, tag_id=tag_id)
         
         # 清空表格
         self.task_table.setRowCount(0)
@@ -1400,122 +1462,158 @@ class TodoWindow(QWidget):
             """)
             print(f"[待办窗口] 添加任务异常: {e}")
     
+    def get_selected_task_id(self):
+        """获取当前视图中选中的任务ID"""
+        if self.current_view == 'list' and self.task_table:
+            current_row = self.task_table.currentRow()
+            if current_row >= 0:
+                task_id_item = self.task_table.item(current_row, 0)
+                if task_id_item:
+                    try:
+                        return int(task_id_item.text())
+                    except (ValueError, AttributeError):
+                        pass
+        elif self.current_view == 'timeline' and self.timeline_tree:
+            current_item = self.timeline_tree.currentItem()
+            if current_item:
+                task_id = current_item.data(0, Qt.UserRole)
+                if task_id:
+                    return task_id
+        elif self.current_view == 'calendar' and hasattr(self, 'calendar_task_list') and self.calendar_task_list:
+            current_item = self.calendar_task_list.currentItem()
+            if current_item:
+                task_id = current_item.data(Qt.UserRole)
+                if task_id:
+                    return task_id
+        elif self.current_view == 'kanban' and self.kanban_lists:
+            for status_key, task_list in self.kanban_lists.items():
+                current_item = task_list.currentItem()
+                if current_item:
+                    task_id = current_item.data(Qt.UserRole)
+                    if task_id:
+                        return task_id
+        return None
+    
     def edit_task(self):
         """编辑选中的任务"""
-        if not self.task_table:
-            QMessageBox.warning(self, "警告", "请先切换到列表视图！")
-            return
-        
-        current_row = self.task_table.currentRow()
-        if current_row < 0:
+        task_id = self.get_selected_task_id()
+        if not task_id:
             QMessageBox.warning(self, "警告", "请先选择要编辑的任务！")
             return
-        
-        # 获取任务ID
-        task_id = int(self.task_table.item(current_row, 0).text())
         
         # 从数据库获取完整任务数据
         if not self.database:
             QMessageBox.warning(self, "错误", "数据库未初始化！")
             return
         
-        task_data = self.database.get_task(task_id)
-        if not task_data:
-            QMessageBox.warning(self, "错误", f"找不到任务 ID: {task_id}")
-            return
-        
-        # 显示编辑对话框
-        dialog = TaskDialog(self, task_data, database=self.database)  # [v0.3.0] 传递database
-        if dialog.exec_() == QDialog.Accepted:
-            new_data = dialog.get_task_data()
+        try:
+            task_data = self.database.get_task(task_id)
+            if not task_data:
+                QMessageBox.warning(self, "错误", f"找不到任务 ID: {task_id}")
+                return
             
-            # 获取新的标签 [v0.3.0]
-            new_tag_ids = set(dialog.get_selected_tag_ids())
-            old_tag_ids = {tag['id'] for tag in self.database.get_task_tags(task_id)}
-            
-            # 更新数据库
-            self.database.update_task(task_id, **new_data)
-            
-            # 更新标签关联 [v0.3.0]
-            # 删除不再需要的标签
-            for tag_id in old_tag_ids - new_tag_ids:
-                self.database.remove_task_tag(task_id, tag_id)
-            # 添加新标签
-            for tag_id in new_tag_ids - old_tag_ids:
-                self.database.add_task_tag(task_id, tag_id)
-            
-            # 刷新所有视图
-            self.refresh_current_view()
-            
-            # 更新状态
-            if hasattr(self, 'status_label'):
-                self.status_label.setText(f"✅ 任务已更新: {new_data['title']}")
-            self.status_label.setStyleSheet("""
-                QLabel {
-                    color: #4caf50;
-                    font-size: 12px;
-                    padding: 5px;
-                }
-            """)
-            
-            # 发送信号
-            self.task_updated.emit(task_id, new_data)
+            # 显示编辑对话框
+            dialog = TaskDialog(self, task_data, database=self.database)  # [v0.3.0] 传递database
+            if dialog.exec_() == QDialog.Accepted:
+                new_data = dialog.get_task_data()
+                
+                # 获取新的标签 [v0.3.0]
+                new_tag_ids = set(dialog.get_selected_tag_ids())
+                old_tag_ids = {tag['id'] for tag in self.database.get_task_tags(task_id)}
+                
+                # 更新数据库
+                self.database.update_task(task_id, **new_data)
+                
+                # 更新标签关联 [v0.3.0]
+                # 删除不再需要的标签
+                for tag_id in old_tag_ids - new_tag_ids:
+                    self.database.remove_task_tag(task_id, tag_id)
+                # 添加新标签
+                for tag_id in new_tag_ids - old_tag_ids:
+                    self.database.add_task_tag(task_id, tag_id)
+                
+                # 刷新所有视图
+                self.refresh_current_view()
+                
+                # 更新状态
+                if hasattr(self, 'status_label'):
+                    self.status_label.setText(f"✅ 任务已更新: {new_data['title']}")
+                    self.status_label.setStyleSheet("""
+                        QLabel {
+                            color: #4caf50;
+                            font-size: 12px;
+                            padding: 5px;
+                        }
+                    """)
+                
+                # 发送信号
+                self.task_updated.emit(task_id, new_data)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"编辑任务时发生错误：\n{str(e)}")
+            print(f"[待办窗口] 编辑任务异常: {e}")
+            import traceback
+            traceback.print_exc()
     
     def delete_task(self):
         """删除选中的任务（支持多选）"""
-        if not self.task_table:
-            QMessageBox.warning(self, "警告", "请先切换到列表视图！")
-            return
-        
         try:
-            # 获取所有选中的行
-            selected_ranges = self.task_table.selectedRanges()
-            if not selected_ranges:
-                QMessageBox.warning(self, "警告", "请先选择要删除的任务！")
-                return
+            task_ids = []
             
-            # 收集所有选中的行号（去重）
-            selected_rows = set()
-            for range_obj in selected_ranges:
-                for row in range(range_obj.topRow(), range_obj.bottomRow() + 1):
-                    selected_rows.add(row)
+            # 根据当前视图获取选中的任务ID
+            if self.current_view == 'list' and self.task_table:
+                # 获取所有选中的行
+                selected_ranges = self.task_table.selectedRanges()
+                if not selected_ranges:
+                    QMessageBox.warning(self, "警告", "请先选择要删除的任务！")
+                    return
+                
+                # 收集所有选中的行号（去重）
+                selected_rows = set()
+                for range_obj in selected_ranges:
+                    for row in range(range_obj.topRow(), range_obj.bottomRow() + 1):
+                        selected_rows.add(row)
+                
+                if not selected_rows:
+                    QMessageBox.warning(self, "警告", "请先选择要删除的任务！")
+                    return
+                
+                # 获取所有选中行的任务ID
+                for row in selected_rows:
+                    try:
+                        task_id_item = self.task_table.item(row, 0)
+                        if task_id_item:
+                            task_id = int(task_id_item.text())
+                            task_ids.append(task_id)
+                    except (ValueError, AttributeError) as e:
+                        print(f"[待办窗口] 获取任务ID失败，行{row}: {e}")
+                        continue
+            else:
+                # 其他视图：只支持单选
+                task_id = self.get_selected_task_id()
+                if not task_id:
+                    QMessageBox.warning(self, "警告", "请先选择要删除的任务！")
+                    return
+                task_ids = [task_id]
             
-            if not selected_rows:
-                QMessageBox.warning(self, "警告", "请先选择要删除的任务！")
+            if not task_ids:
+                QMessageBox.warning(self, "错误", "无法获取任务ID")
                 return
             
             # 确认删除
-            count = len(selected_rows)
+            count = len(task_ids)
             reply = QMessageBox.question(
                 self, "确认", f"确定要删除选中的 {count} 个任务吗？",
                 QMessageBox.Yes | QMessageBox.No
             )
             
             if reply == QMessageBox.Yes:
-                # 获取所有选中行的任务ID（按行号倒序排列，以便从后往前删除，避免索引变化问题）
-                task_ids = []
-                rows_to_delete = sorted(selected_rows, reverse=True)
-                
-                for row in rows_to_delete:
-                    try:
-                        task_id_item = self.task_table.item(row, 0)
-                        if task_id_item:
-                            task_id = int(task_id_item.text())
-                            task_ids.append((row, task_id))
-                    except (ValueError, AttributeError) as e:
-                        print(f"[待办窗口] 获取任务ID失败，行{row}: {e}")
-                        continue
-                
-                if not task_ids:
-                    QMessageBox.warning(self, "错误", "无法获取任务ID")
-                    return
                 
                 # 批量删除
                 if self.database:
                     success_count = 0
                     failed_count = 0
                     
-                    for row, task_id in task_ids:
+                    for task_id in task_ids:
                         try:
                             if self.database.delete_task(task_id):
                                 self.task_deleted.emit(task_id)
@@ -1572,18 +1670,11 @@ class TodoWindow(QWidget):
     
     def complete_task(self):
         """标记任务为已完成"""
-        if not self.task_table:
-            QMessageBox.warning(self, "警告", "请先切换到列表视图！")
-            return
-        
         try:
-            current_row = self.task_table.currentRow()
-            if current_row < 0:
+            task_id = self.get_selected_task_id()
+            if not task_id:
                 QMessageBox.warning(self, "警告", "请先选择要完成的任务！")
                 return
-            
-            # 获取任务ID
-            task_id = int(self.task_table.item(current_row, 0).text())
             
             # 更新数据库
             if self.database:
@@ -1629,8 +1720,9 @@ class TodoWindow(QWidget):
     
     def search_tasks(self, keyword):
         """搜索任务"""
-        if not self.task_table:
-            return
+        # 搜索功能在所有视图中都通过刷新当前视图来实现
+        self.current_search_keyword = keyword.strip() if keyword and keyword.strip() else None
+        self.refresh_current_view()
         
         if not keyword.strip():
             # 如果搜索框为空，恢复当前筛选
@@ -1746,10 +1838,24 @@ class TodoWindow(QWidget):
         try:
             self.timeline_tree.clear()
             # 获取任务
-            tasks = self.database.get_all_tasks(
-                category=self.current_category if self.current_category else None,
-                tag_id=self.current_tag_id if self.current_tag_id else None
-            )
+            if self.current_search_keyword:
+                tasks = self.database.search_tasks(self.current_search_keyword)
+                # 进一步按分类和标签筛选
+                filtered_tasks = []
+                for task in tasks:
+                    if self.current_category and task.get('category') != self.current_category:
+                        continue
+                    if self.current_tag_id:
+                        task_tags = self.database.get_task_tags(task['id'])
+                        if not any(tag['id'] == self.current_tag_id for tag in task_tags):
+                            continue
+                    filtered_tasks.append(task)
+                tasks = filtered_tasks
+            else:
+                tasks = self.database.get_all_tasks(
+                    category=self.current_category if self.current_category else None,
+                    tag_id=self.current_tag_id if self.current_tag_id else None
+                )
             # 按日期分组
             tasks_by_date = defaultdict(list)
             for task in tasks:
@@ -1787,10 +1893,24 @@ class TodoWindow(QWidget):
             return
         try:
             # 获取任务
-            tasks = self.database.get_all_tasks(
-                category=self.current_category if self.current_category else None,
-                tag_id=self.current_tag_id if self.current_tag_id else None
-            )
+            if self.current_search_keyword:
+                tasks = self.database.search_tasks(self.current_search_keyword)
+                # 进一步按分类和标签筛选
+                filtered_tasks = []
+                for task in tasks:
+                    if self.current_category and task.get('category') != self.current_category:
+                        continue
+                    if self.current_tag_id:
+                        task_tags = self.database.get_task_tags(task['id'])
+                        if not any(tag['id'] == self.current_tag_id for tag in task_tags):
+                            continue
+                    filtered_tasks.append(task)
+                tasks = filtered_tasks
+            else:
+                tasks = self.database.get_all_tasks(
+                    category=self.current_category if self.current_category else None,
+                    tag_id=self.current_tag_id if self.current_tag_id else None
+                )
             # 标记有任务的日期
             dates_with_tasks = {}
             for task in tasks:
@@ -1845,10 +1965,24 @@ class TodoWindow(QWidget):
                 if status_key in self.kanban_lists:
                     self.kanban_lists[status_key].clear()
             # 获取任务
-            tasks = self.database.get_all_tasks(
-                category=self.current_category if self.current_category else None,
-                tag_id=self.current_tag_id if self.current_tag_id else None
-            )
+            if self.current_search_keyword:
+                tasks = self.database.search_tasks(self.current_search_keyword)
+                # 进一步按分类和标签筛选
+                filtered_tasks = []
+                for task in tasks:
+                    if self.current_category and task.get('category') != self.current_category:
+                        continue
+                    if self.current_tag_id:
+                        task_tags = self.database.get_task_tags(task['id'])
+                        if not any(tag['id'] == self.current_tag_id for tag in task_tags):
+                            continue
+                    filtered_tasks.append(task)
+                tasks = filtered_tasks
+            else:
+                tasks = self.database.get_all_tasks(
+                    category=self.current_category if self.current_category else None,
+                    tag_id=self.current_tag_id if self.current_tag_id else None
+                )
             # 添加到对应列
             for task in tasks:
                 status = task.get('status', 'pending')
