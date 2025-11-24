@@ -205,6 +205,194 @@ class Database:
         except sqlite3.OperationalError:
             pass  # 字段已存在
         
+        # ========== v0.5.0 敬业签功能新增表 ==========
+        
+        # 创建便签表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT,
+                category_id INTEGER,
+                is_pinned BOOLEAN DEFAULT 0,
+                is_locked BOOLEAN DEFAULT 0,
+                color TEXT DEFAULT '#FFFFFF',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (category_id) REFERENCES note_categories(id) ON DELETE SET NULL
+            )
+        """)
+        
+        # 创建便签分类表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS note_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT DEFAULT '#4CAF50',
+                icon TEXT,
+                parent_id INTEGER,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (parent_id) REFERENCES note_categories(id) ON DELETE CASCADE
+            )
+        """)
+        
+        # 创建附件表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_type TEXT NOT NULL,
+                entity_id INTEGER NOT NULL,
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_size INTEGER,
+                file_type TEXT,
+                thumbnail_path TEXT,
+                upload_time TEXT NOT NULL
+            )
+        """)
+        
+        # 创建子任务表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subtasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                status TEXT DEFAULT 'pending',
+                priority INTEGER DEFAULT 1,
+                sort_order INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                completed_at TEXT,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            )
+        """)
+        
+        # 创建任务依赖表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS task_dependencies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                depends_on_task_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                FOREIGN KEY (depends_on_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+                UNIQUE(task_id, depends_on_task_id)
+            )
+        """)
+        
+        # 创建任务模板表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS task_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                category TEXT,
+                priority INTEGER DEFAULT 1,
+                template_data TEXT,
+                usage_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        
+        # 创建提醒历史表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reminder_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER,
+                reminder_time TEXT NOT NULL,
+                triggered_time TEXT,
+                status TEXT DEFAULT 'pending',
+                user_action TEXT,
+                snooze_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+            )
+        """)
+        
+        # 创建提醒模板表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS reminder_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                remind_before_minutes INTEGER,
+                repeat_type TEXT,
+                repeat_rule TEXT,
+                usage_count INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+        """)
+        
+        # 创建视图设置表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS view_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                view_type TEXT NOT NULL,
+                user_id TEXT DEFAULT 'default',
+                settings_data TEXT NOT NULL,
+                is_default BOOLEAN DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(view_type, user_id)
+            )
+        """)
+        
+        # 创建备份记录表 [v0.5.0]
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS backup_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_file_path TEXT NOT NULL,
+                backup_type TEXT DEFAULT 'manual',
+                file_size INTEGER,
+                record_count INTEGER,
+                backup_time TEXT NOT NULL,
+                description TEXT
+            )
+        """)
+        
+        # 扩展tasks表字段 [v0.5.0]
+        try:
+            self.cursor.execute("ALTER TABLE tasks ADD COLUMN notes TEXT")
+        except sqlite3.OperationalError:
+            pass  # 字段已存在
+        
+        try:
+            self.cursor.execute("ALTER TABLE tasks ADD COLUMN template_id INTEGER")
+        except sqlite3.OperationalError:
+            pass  # 字段已存在
+        
+        try:
+            self.cursor.execute("ALTER TABLE tasks ADD COLUMN repeat_rule TEXT")
+        except sqlite3.OperationalError:
+            pass  # 字段已存在
+        
+        try:
+            self.cursor.execute("ALTER TABLE tasks ADD COLUMN reminder_times TEXT")
+        except sqlite3.OperationalError:
+            pass  # 字段已存在
+        
+        # 创建索引 [v0.5.0]
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category_id)",
+            "CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes(is_pinned)",
+            "CREATE INDEX IF NOT EXISTS idx_attachments_entity ON attachments(entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_subtasks_status ON subtasks(status)",
+            "CREATE INDEX IF NOT EXISTS idx_dependencies_task ON task_dependencies(task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dependencies_depends ON task_dependencies(depends_on_task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reminder_history_task ON reminder_history(task_id)",
+            "CREATE INDEX IF NOT EXISTS idx_reminder_history_time ON reminder_history(reminder_time)",
+        ]
+        
+        for index_sql in indexes:
+            try:
+                self.cursor.execute(index_sql)
+            except sqlite3.OperationalError as e:
+                print(f"[数据库] 创建索引失败: {e}")
+        
         self.conn.commit()
         print(f"[数据库] 初始化成功: {self.db_path}")
     
@@ -269,25 +457,54 @@ class Database:
             return dict(row)
         return None
     
-    def get_all_tasks(self, status: str = None) -> List[Dict]:
+    def get_all_tasks(self, status: str = None, category: str = None, tag_id: int = None) -> List[Dict]:
         """
         获取所有任务
         
         Args:
             status: 状态筛选 (pending, completed, expired)
+            category: 分类筛选
+            tag_id: 标签ID筛选
         
         Returns:
             任务列表
         """
         self.connect()
         
+        # 构建SQL查询
+        conditions = []
+        params = []
+        
         if status:
-            self.cursor.execute(
-                "SELECT * FROM tasks WHERE status = ? ORDER BY due_date",
-                (status,)
-            )
+            conditions.append("status = ?")
+            params.append(status)
+        
+        if category:
+            conditions.append("category = ?")
+            params.append(category)
+        
+        if tag_id:
+            # 需要通过task_tags表关联
+            where_clause = "tt.tag_id = ?"
+            if conditions:
+                # 将status和category条件转换为表别名t
+                adapted_conditions = [c.replace("status =", "t.status =").replace("category =", "t.category =") for c in conditions]
+                where_clause += " AND " + " AND ".join(adapted_conditions)
+            
+            sql = f"""
+                SELECT DISTINCT t.* FROM tasks t
+                INNER JOIN task_tags tt ON t.id = tt.task_id
+                WHERE {where_clause}
+                ORDER BY t.due_date
+            """
+            self.cursor.execute(sql, [tag_id] + params)
         else:
-            self.cursor.execute("SELECT * FROM tasks ORDER BY due_date")
+            # 普通查询
+            sql = "SELECT * FROM tasks"
+            if conditions:
+                sql += " WHERE " + " AND ".join(conditions)
+            sql += " ORDER BY due_date"
+            self.cursor.execute(sql, params)
         
         rows = self.cursor.fetchall()
         return [dict(row) for row in rows]
@@ -1080,6 +1297,688 @@ class Database:
         self.cursor.execute("""
             SELECT * FROM image_tasks 
             ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    # ========== v0.5.0 敬业签功能新增方法 ==========
+    
+    # --- 便签相关 ---
+    
+    def add_note(self, title: str, content: str = "", category_id: int = None,
+                 color: str = "#FFFFFF", is_pinned: bool = False, 
+                 is_locked: bool = False) -> int:
+        """添加便签"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO notes (title, content, category_id, color, 
+                                 is_pinned, is_locked, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (title, content, category_id, color, is_pinned, is_locked, now, now))
+            
+            self.conn.commit()
+            note_id = self.cursor.lastrowid
+            print(f"[数据库] 添加便签成功: ID={note_id}, 标题={title}")
+            return note_id
+        except Exception as e:
+            print(f"[数据库] 添加便签失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_note(self, note_id: int) -> Optional[Dict]:
+        """获取便签"""
+        self.connect()
+        self.cursor.execute("SELECT * FROM notes WHERE id = ?", (note_id,))
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+    
+    def get_all_notes(self, category_id: int = None, is_pinned: bool = None) -> List[Dict]:
+        """获取所有便签"""
+        self.connect()
+        
+        if category_id is not None:
+            self.cursor.execute("""
+                SELECT * FROM notes WHERE category_id = ? 
+                ORDER BY is_pinned DESC, updated_at DESC
+            """, (category_id,))
+        elif is_pinned is not None:
+            self.cursor.execute("""
+                SELECT * FROM notes WHERE is_pinned = ? 
+                ORDER BY updated_at DESC
+            """, (1 if is_pinned else 0,))
+        else:
+            self.cursor.execute("""
+                SELECT * FROM notes 
+                ORDER BY is_pinned DESC, updated_at DESC
+            """)
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def update_note(self, note_id: int, **kwargs) -> bool:
+        """更新便签"""
+        try:
+            self.connect()
+            kwargs['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            fields = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+            values = list(kwargs.values()) + [note_id]
+            
+            self.cursor.execute(
+                f"UPDATE notes SET {fields} WHERE id = ?",
+                values
+            )
+            
+            self.conn.commit()
+            success = self.cursor.rowcount > 0
+            if success:
+                print(f"[数据库] 更新便签成功: ID={note_id}")
+            return success
+        except Exception as e:
+            print(f"[数据库] 更新便签失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    def delete_note(self, note_id: int) -> bool:
+        """删除便签"""
+        try:
+            self.connect()
+            self.cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+            self.conn.commit()
+            success = self.cursor.rowcount > 0
+            if success:
+                print(f"[数据库] 删除便签成功: ID={note_id}")
+            return success
+        except Exception as e:
+            print(f"[数据库] 删除便签失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    def search_notes(self, keyword: str) -> List[Dict]:
+        """搜索便签"""
+        self.connect()
+        pattern = f"%{keyword}%"
+        
+        self.cursor.execute("""
+            SELECT * FROM notes 
+            WHERE title LIKE ? OR content LIKE ?
+            ORDER BY updated_at DESC
+        """, (pattern, pattern))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    # --- 便签分类相关 ---
+    
+    def add_note_category(self, name: str, color: str = "#4CAF50", 
+                         icon: str = None, parent_id: int = None,
+                         sort_order: int = 0) -> int:
+        """添加便签分类"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO note_categories (name, color, icon, parent_id, 
+                                           sort_order, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (name, color, icon, parent_id, sort_order, now))
+            
+            self.conn.commit()
+            category_id = self.cursor.lastrowid
+            print(f"[数据库] 添加便签分类成功: ID={category_id}, 名称={name}")
+            return category_id
+        except sqlite3.IntegrityError:
+            print(f"[数据库] 便签分类已存在: {name}")
+            self.cursor.execute("SELECT id FROM note_categories WHERE name = ?", (name,))
+            row = self.cursor.fetchone()
+            return row[0] if row else -1
+        except Exception as e:
+            print(f"[数据库] 添加便签分类失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_all_note_categories(self) -> List[Dict]:
+        """获取所有便签分类"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM note_categories 
+            ORDER BY sort_order, name
+        """)
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def delete_note_category(self, category_id: int) -> bool:
+        """删除便签分类"""
+        try:
+            self.connect()
+            self.cursor.execute("DELETE FROM note_categories WHERE id = ?", (category_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 删除便签分类失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    # --- 附件相关 ---
+    
+    def add_attachment(self, entity_type: str, entity_id: int, file_name: str,
+                      file_path: str, file_size: int = None, file_type: str = None,
+                      thumbnail_path: str = None) -> int:
+        """添加附件"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO attachments 
+                (entity_type, entity_id, file_name, file_path, file_size, 
+                 file_type, thumbnail_path, upload_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (entity_type, entity_id, file_name, file_path, file_size,
+                  file_type, thumbnail_path, now))
+            
+            self.conn.commit()
+            attachment_id = self.cursor.lastrowid
+            print(f"[数据库] 添加附件成功: ID={attachment_id}")
+            return attachment_id
+        except Exception as e:
+            print(f"[数据库] 添加附件失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_attachments(self, entity_type: str, entity_id: int) -> List[Dict]:
+        """获取实体的附件列表"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM attachments 
+            WHERE entity_type = ? AND entity_id = ?
+            ORDER BY upload_time DESC
+        """, (entity_type, entity_id))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def delete_attachment(self, attachment_id: int) -> bool:
+        """删除附件"""
+        try:
+            self.connect()
+            self.cursor.execute("DELETE FROM attachments WHERE id = ?", (attachment_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 删除附件失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    # --- 子任务相关 ---
+    
+    def add_subtask(self, task_id: int, title: str, description: str = "",
+                   priority: int = 1, sort_order: int = 0) -> int:
+        """添加子任务"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO subtasks 
+                (task_id, title, description, priority, sort_order, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (task_id, title, description, priority, sort_order, now))
+            
+            self.conn.commit()
+            subtask_id = self.cursor.lastrowid
+            print(f"[数据库] 添加子任务成功: ID={subtask_id}")
+            return subtask_id
+        except Exception as e:
+            print(f"[数据库] 添加子任务失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_subtasks(self, task_id: int) -> List[Dict]:
+        """获取任务的子任务列表"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM subtasks 
+            WHERE task_id = ?
+            ORDER BY sort_order, created_at
+        """, (task_id,))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def update_subtask(self, subtask_id: int, **kwargs) -> bool:
+        """更新子任务"""
+        try:
+            self.connect()
+            
+            if 'status' in kwargs and kwargs['status'] == 'completed':
+                kwargs['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            elif 'status' in kwargs and kwargs['status'] == 'pending':
+                kwargs['completed_at'] = None
+            
+            fields = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+            values = list(kwargs.values()) + [subtask_id]
+            
+            self.cursor.execute(
+                f"UPDATE subtasks SET {fields} WHERE id = ?",
+                values
+            )
+            
+            self.conn.commit()
+            return self.cursor.rowcount > 0
+        except Exception as e:
+            print(f"[数据库] 更新子任务失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    def delete_subtask(self, subtask_id: int) -> bool:
+        """删除子任务"""
+        try:
+            self.connect()
+            self.cursor.execute("DELETE FROM subtasks WHERE id = ?", (subtask_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 删除子任务失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    # --- 任务依赖相关 ---
+    
+    def add_task_dependency(self, task_id: int, depends_on_task_id: int) -> bool:
+        """添加任务依赖"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 检查是否依赖自己
+            if task_id == depends_on_task_id:
+                print("[数据库] 不能依赖自己")
+                return False
+            
+            self.cursor.execute("""
+                INSERT INTO task_dependencies (task_id, depends_on_task_id, created_at)
+                VALUES (?, ?, ?)
+            """, (task_id, depends_on_task_id, now))
+            
+            self.conn.commit()
+            print(f"[数据库] 添加任务依赖成功: task_id={task_id}, depends_on={depends_on_task_id}")
+            return True
+        except sqlite3.IntegrityError:
+            print(f"[数据库] 任务依赖已存在")
+            return False
+        except Exception as e:
+            print(f"[数据库] 添加任务依赖失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    def get_task_dependencies(self, task_id: int) -> List[Dict]:
+        """获取任务的依赖列表"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM task_dependencies 
+            WHERE task_id = ?
+        """, (task_id,))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def get_dependent_tasks(self, task_id: int) -> List[Dict]:
+        """获取依赖该任务的任务列表"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM task_dependencies 
+            WHERE depends_on_task_id = ?
+        """, (task_id,))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def delete_task_dependency(self, task_id: int, depends_on_task_id: int) -> bool:
+        """删除任务依赖"""
+        try:
+            self.connect()
+            self.cursor.execute("""
+                DELETE FROM task_dependencies 
+                WHERE task_id = ? AND depends_on_task_id = ?
+            """, (task_id, depends_on_task_id))
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 删除任务依赖失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    def check_circular_dependency(self, task_id: int, depends_on_task_id: int) -> bool:
+        """检查是否形成循环依赖（使用DFS）"""
+        self.connect()
+        visited = set()
+        
+        def dfs(current_id: int) -> bool:
+            if current_id == task_id:
+                return True  # 发现循环
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+            
+            # 获取当前任务的所有依赖
+            deps = self.get_task_dependencies(current_id)
+            for dep in deps:
+                if dfs(dep['depends_on_task_id']):
+                    return True
+            return False
+        
+        return dfs(depends_on_task_id)
+    
+    # --- 任务模板相关 ---
+    
+    def add_task_template(self, name: str, title: str, description: str = "",
+                         category: str = None, priority: int = 1,
+                         template_data: str = None) -> int:
+        """添加任务模板"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO task_templates 
+                (name, title, description, category, priority, template_data, 
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name, title, description, category, priority, template_data, now, now))
+            
+            self.conn.commit()
+            template_id = self.cursor.lastrowid
+            print(f"[数据库] 添加任务模板成功: ID={template_id}, 名称={name}")
+            return template_id
+        except Exception as e:
+            print(f"[数据库] 添加任务模板失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_all_task_templates(self) -> List[Dict]:
+        """获取所有任务模板"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM task_templates 
+            ORDER BY usage_count DESC, updated_at DESC
+        """)
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def get_task_template(self, template_id: int) -> Optional[Dict]:
+        """获取任务模板"""
+        self.connect()
+        self.cursor.execute("SELECT * FROM task_templates WHERE id = ?", (template_id,))
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+    
+    def update_task_template_usage(self, template_id: int) -> bool:
+        """更新模板使用次数"""
+        try:
+            self.connect()
+            self.cursor.execute("""
+                UPDATE task_templates 
+                SET usage_count = usage_count + 1,
+                    updated_at = ?
+                WHERE id = ?
+            """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), template_id))
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 更新模板使用次数失败: {e}")
+            return False
+    
+    def delete_task_template(self, template_id: int) -> bool:
+        """删除任务模板"""
+        try:
+            self.connect()
+            self.cursor.execute("DELETE FROM task_templates WHERE id = ?", (template_id,))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 删除任务模板失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    # --- 提醒历史相关 ---
+    
+    def add_reminder_history(self, task_id: int, reminder_time: str,
+                            status: str = 'pending') -> int:
+        """添加提醒历史记录"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO reminder_history 
+                (task_id, reminder_time, status, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (task_id, reminder_time, status, now))
+            
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except Exception as e:
+            print(f"[数据库] 添加提醒历史失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def update_reminder_history(self, history_id: int, triggered_time: str = None,
+                               status: str = None, user_action: str = None,
+                               snooze_count: int = None) -> bool:
+        """更新提醒历史"""
+        try:
+            self.connect()
+            updates = []
+            values = []
+            
+            if triggered_time:
+                updates.append("triggered_time = ?")
+                values.append(triggered_time)
+            if status:
+                updates.append("status = ?")
+                values.append(status)
+            if user_action:
+                updates.append("user_action = ?")
+                values.append(user_action)
+            if snooze_count is not None:
+                updates.append("snooze_count = ?")
+                values.append(snooze_count)
+            
+            if not updates:
+                return False
+            
+            values.append(history_id)
+            self.cursor.execute(
+                f"UPDATE reminder_history SET {', '.join(updates)} WHERE id = ?",
+                values
+            )
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 更新提醒历史失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return False
+    
+    def get_reminder_history(self, task_id: int = None, limit: int = 50) -> List[Dict]:
+        """获取提醒历史"""
+        self.connect()
+        
+        if task_id:
+            self.cursor.execute("""
+                SELECT * FROM reminder_history 
+                WHERE task_id = ?
+                ORDER BY reminder_time DESC
+                LIMIT ?
+            """, (task_id, limit))
+        else:
+            self.cursor.execute("""
+                SELECT * FROM reminder_history 
+                ORDER BY reminder_time DESC
+                LIMIT ?
+            """, (limit,))
+        
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    # --- 提醒模板相关 ---
+    
+    def add_reminder_template(self, name: str, remind_before_minutes: int = None,
+                             repeat_type: str = None, repeat_rule: str = None) -> int:
+        """添加提醒模板"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO reminder_templates 
+                (name, remind_before_minutes, repeat_type, repeat_rule, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (name, remind_before_minutes, repeat_type, repeat_rule, now))
+            
+            self.conn.commit()
+            template_id = self.cursor.lastrowid
+            print(f"[数据库] 添加提醒模板成功: ID={template_id}, 名称={name}")
+            return template_id
+        except Exception as e:
+            print(f"[数据库] 添加提醒模板失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_all_reminder_templates(self) -> List[Dict]:
+        """获取所有提醒模板"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM reminder_templates 
+            ORDER BY usage_count DESC, created_at DESC
+        """)
+        rows = self.cursor.fetchall()
+        return [dict(row) for row in rows]
+    
+    def update_reminder_template_usage(self, template_id: int) -> bool:
+        """更新提醒模板使用次数"""
+        try:
+            self.connect()
+            self.cursor.execute("""
+                UPDATE reminder_templates 
+                SET usage_count = usage_count + 1
+                WHERE id = ?
+            """, (template_id,))
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"[数据库] 更新提醒模板使用次数失败: {e}")
+            return False
+    
+    # --- 视图设置相关 ---
+    
+    def save_view_settings(self, view_type: str, settings_data: str,
+                          is_default: bool = False, user_id: str = 'default') -> int:
+        """保存视图设置"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 检查是否已存在
+            self.cursor.execute("""
+                SELECT id FROM view_settings 
+                WHERE view_type = ? AND user_id = ?
+            """, (view_type, user_id))
+            
+            row = self.cursor.fetchone()
+            if row:
+                # 更新
+                self.cursor.execute("""
+                    UPDATE view_settings 
+                    SET settings_data = ?, is_default = ?, updated_at = ?
+                    WHERE id = ?
+                """, (settings_data, is_default, now, row[0]))
+                self.conn.commit()
+                return row[0]
+            else:
+                # 插入
+                self.cursor.execute("""
+                    INSERT INTO view_settings 
+                    (view_type, user_id, settings_data, is_default, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (view_type, user_id, settings_data, is_default, now, now))
+                self.conn.commit()
+                return self.cursor.lastrowid
+        except Exception as e:
+            print(f"[数据库] 保存视图设置失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_view_settings(self, view_type: str, user_id: str = 'default') -> Optional[Dict]:
+        """获取视图设置"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM view_settings 
+            WHERE view_type = ? AND user_id = ?
+        """, (view_type, user_id))
+        
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+    
+    # --- 备份记录相关 ---
+    
+    def add_backup_record(self, backup_file_path: str, backup_type: str = 'manual',
+                         file_size: int = None, record_count: int = None,
+                         description: str = None) -> int:
+        """添加备份记录"""
+        try:
+            self.connect()
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            self.cursor.execute("""
+                INSERT INTO backup_records 
+                (backup_file_path, backup_type, file_size, record_count, 
+                 backup_time, description)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (backup_file_path, backup_type, file_size, record_count, now, description))
+            
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except Exception as e:
+            print(f"[数据库] 添加备份记录失败: {e}")
+            if self.conn:
+                self.conn.rollback()
+            return -1
+    
+    def get_backup_records(self, limit: int = 20) -> List[Dict]:
+        """获取备份记录"""
+        self.connect()
+        self.cursor.execute("""
+            SELECT * FROM backup_records 
+            ORDER BY backup_time DESC
             LIMIT ?
         """, (limit,))
         

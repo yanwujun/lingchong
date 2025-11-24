@@ -13,6 +13,42 @@ import sys
 import os
 import io
 
+# 修复Qt平台插件路径问题（必须在导入PyQt5之前）
+if sys.platform == 'win32':
+    # 方法1: 查找虚拟环境中的插件路径
+    venv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pack_env')
+    if os.path.exists(venv_path):
+        venv_plugin = os.path.join(venv_path, 'Lib', 'site-packages', 'PyQt5', 'Qt5', 'plugins')
+        if os.path.exists(venv_plugin):
+            os.environ['QT_PLUGIN_PATH'] = venv_plugin
+            print(f"[系统] Qt插件路径（虚拟环境）: {venv_plugin}")
+    
+    # 方法2: 如果虚拟环境没找到，尝试从site-packages查找
+    if 'QT_PLUGIN_PATH' not in os.environ:
+        try:
+            import site
+            for sitepack in site.getsitepackages():
+                plugin_path = os.path.join(sitepack, 'PyQt5', 'Qt5', 'plugins')
+                if os.path.exists(plugin_path):
+                    os.environ['QT_PLUGIN_PATH'] = plugin_path
+                    print(f"[系统] Qt插件路径: {plugin_path}")
+                    break
+        except Exception as e:
+            print(f"[警告] 查找Qt插件路径失败: {e}")
+    
+    # 方法3: 如果还是没找到，尝试从PyQt5包目录查找（作为最后的后备方案）
+    if 'QT_PLUGIN_PATH' not in os.environ:
+        try:
+            # 先导入PyQt5来获取路径（虽然可能已经太晚了，但作为后备方案）
+            import PyQt5
+            pyqt5_dir = os.path.dirname(PyQt5.__file__)
+            plugin_path = os.path.join(pyqt5_dir, 'Qt5', 'plugins')
+            if os.path.exists(plugin_path):
+                os.environ['QT_PLUGIN_PATH'] = plugin_path
+                print(f"[系统] Qt插件路径（后备方案）: {plugin_path}")
+        except Exception as e:
+            print(f"[警告] 设置Qt插件路径失败: {e}")
+
 # 修复 Windows 控制台编码问题
 if sys.platform == 'win32':
     try:
@@ -63,6 +99,15 @@ class DesktopPetApp:
         self.shop_window = None  # 商店窗口
         self.image_recognizer = None  # 图片识别器
         
+        # v0.5.0 敬业签功能新增组件
+        self.note_window = None  # 便签窗口
+        self.view_manager = None  # 视图管理器
+        self.global_hotkey = None  # 全局快捷键
+        self.command_palette = None  # 命令面板
+        self.data_exporter = None  # 数据导出器
+        self.data_importer = None  # 数据导入器
+        self.recurring_reminder = None  # 重复提醒
+        
         # 初始化日志系统
         self.logger = get_logger("Main")
         
@@ -81,7 +126,7 @@ class DesktopPetApp:
     def init_components(self):
         """初始化各个组件"""
         print("\n" + "=" * 60)
-        print("桌面灵宠 v0.4.0 - 启动中...")
+        print("桌面灵宠 v0.5.0 - 启动中...")
         print("=" * 60)
         
         # 1. 加载配置
@@ -250,15 +295,14 @@ class DesktopPetApp:
             self.inventory_window = InventoryWindow(
                 database=self.database, 
                 pet_id=pet_id,
-                pet_growth=self.pet_growth
+                growth_system=self.pet_growth
             )
             print("  [OK] 背包窗口创建完成")
             
             # 商店窗口
             self.shop_window = PetShopWindow(
                 database=self.database,
-                pet_manager=self.pet_manager,
-                pet_growth=self.pet_growth
+                pet_id=pet_id
             )
             print("  [OK] 商店窗口创建完成")
             
@@ -297,8 +341,82 @@ class DesktopPetApp:
             print(f"  [WARN] 图片识别器创建失败: {e}")
             self.image_recognizer = None
         
-        # 14. 连接信号
-        print("\n[14/15] 连接组件信号...")
+        # ========== v0.5.0 敬业签功能初始化 ==========
+        
+        # 14. 创建便签窗口 [v0.5.0]
+        print("\n[14/20] 创建便签窗口...")
+        try:
+            from src.note_window import NoteWindow
+            self.note_window = NoteWindow(database=self.database)
+            print("  [OK] 便签窗口创建完成")
+            self.logger.info("便签窗口创建成功")
+        except Exception as e:
+            self.logger.error(f"便签窗口创建失败: {e}")
+            print(f"  [WARN] 便签窗口创建失败: {e}")
+            self.note_window = None
+        
+        # 15. 创建视图管理器 [v0.5.0]
+        print("\n[15/20] 创建视图管理器...")
+        try:
+            from src.view_manager import ViewManager
+            self.view_manager = ViewManager(database=self.database)
+            print("  [OK] 视图管理器创建完成")
+            self.logger.info("视图管理器创建成功")
+        except Exception as e:
+            self.logger.error(f"视图管理器创建失败: {e}")
+            print(f"  [WARN] 视图管理器创建失败: {e}")
+            self.view_manager = None
+        
+        # 16. 创建全局快捷键 [v0.5.0]
+        print("\n[16/20] 创建全局快捷键...")
+        try:
+            from src.global_hotkey import GlobalHotkeyManager
+            self.global_hotkey = GlobalHotkeyManager()
+            
+            # 注册默认快捷键
+            callbacks = {
+                'new_note': lambda: self.show_note_window(),
+                'open_notes': lambda: self.show_note_window(),
+                'command_palette': lambda: self.show_command_palette(),
+            }
+            self.global_hotkey.register_default_hotkeys(callbacks)
+            
+            print("  [OK] 全局快捷键创建完成")
+            self.logger.info("全局快捷键创建成功")
+        except Exception as e:
+            self.logger.error(f"全局快捷键创建失败: {e}")
+            print(f"  [WARN] 全局快捷键创建失败: {e}")
+            self.global_hotkey = None
+        
+        # 17. 创建数据导入导出器 [v0.5.0]
+        print("\n[17/20] 创建数据导入导出器...")
+        try:
+            from src.data_export import DataExporter
+            from src.data_import import DataImporter
+            self.data_exporter = DataExporter(self.database)
+            self.data_importer = DataImporter(self.database)
+            print("  [OK] 数据导入导出器创建完成")
+            self.logger.info("数据导入导出器创建成功")
+        except Exception as e:
+            self.logger.error(f"数据导入导出器创建失败: {e}")
+            print(f"  [WARN] 数据导入导出器创建失败: {e}")
+            self.data_exporter = None
+            self.data_importer = None
+        
+        # 18. 创建重复提醒系统 [v0.5.0]
+        print("\n[18/20] 创建重复提醒系统...")
+        try:
+            from src.recurring_reminder import RecurringReminder
+            self.recurring_reminder = RecurringReminder(self.database)
+            print("  [OK] 重复提醒系统创建完成")
+            self.logger.info("重复提醒系统创建成功")
+        except Exception as e:
+            self.logger.error(f"重复提醒系统创建失败: {e}")
+            print(f"  [WARN] 重复提醒系统创建失败: {e}")
+            self.recurring_reminder = None
+        
+        # 19. 连接信号
+        print("\n[19/20] 连接组件信号...")
         try:
             self.connect_signals()
             print("  [OK] 信号连接完成")
@@ -307,8 +425,8 @@ class DesktopPetApp:
             self.logger.error(f"信号连接失败: {e}")
             print(f"  [ERROR] 信号连接失败: {e}")
         
-        # 15. 检查并显示新手引导 [v0.3.0]
-        print("\n[15/15] 检查新手引导...")
+        # 20. 检查并显示新手引导 [v0.3.0]
+        print("\n[20/20] 检查新手引导...")
         self.show_tutorial_if_needed()
         
         print("\n" + "=" * 60)
@@ -347,12 +465,26 @@ class DesktopPetApp:
         self.pet_window.inventory_window = self.inventory_window
         self.pet_window.shop_window = self.shop_window
         
+        # 传递主程序引用（用于延迟创建窗口）
+        self.pet_window.main_app = self
+        
         # 托盘图标信号
-        self.tray_icon.show_pet_signal.connect(self.show_pet)
-        self.tray_icon.hide_pet_signal.connect(self.hide_pet)
-        self.tray_icon.show_todo_signal.connect(self.show_todo)
-        self.tray_icon.show_settings_signal.connect(self.show_settings)
-        self.tray_icon.quit_signal.connect(self.quit_app)
+        if self.tray_icon:
+            self.tray_icon.show_pet_signal.connect(self.show_pet)
+            self.tray_icon.hide_pet_signal.connect(self.hide_pet)
+            self.tray_icon.show_todo_signal.connect(self.show_todo)
+            self.tray_icon.show_settings_signal.connect(self.show_settings)
+            self.tray_icon.quit_signal.connect(self.quit_app)
+            
+            # v0.5.0 新功能信号
+            if hasattr(self.tray_icon, 'show_note_signal'):
+                self.tray_icon.show_note_signal.connect(self.show_note_window)
+            if hasattr(self.tray_icon, 'show_view_signal'):
+                self.tray_icon.show_view_signal.connect(self.show_view_manager)
+            if hasattr(self.tray_icon, 'export_signal'):
+                self.tray_icon.export_signal.connect(self.export_data)
+            if hasattr(self.tray_icon, 'import_signal'):
+                self.tray_icon.import_signal.connect(self.import_data)
         
         # 提醒系统信号
         self.reminder_system.completed.connect(self.on_task_completed)
@@ -392,6 +524,13 @@ class DesktopPetApp:
             pomodoro_timer = self.pomodoro_window.pomodoro_manager.timer
             pomodoro_timer.session_completed.connect(self.on_pomodoro_completed)
         
+        # ========== v0.5.0 新功能信号连接 ==========
+        
+        # 便签窗口信号
+        if self.note_window:
+            # 便签窗口的信号连接（如果需要）
+            pass
+        
         print("  [OK] 信号连接完成")
     
     def show_pet(self):
@@ -419,6 +558,90 @@ class DesktopPetApp:
             self.settings_window.show()
             self.settings_window.raise_()
             self.settings_window.activateWindow()
+    
+    # ========== v0.5.0 敬业签功能方法 ==========
+    
+    def show_note_window(self):
+        """显示便签窗口 [v0.5.0]"""
+        if self.note_window:
+            self.note_window.show()
+            self.note_window.raise_()
+            self.note_window.activateWindow()
+    
+    def show_view_manager(self):
+        """显示视图管理器 [v0.5.0]"""
+        if self.view_manager:
+            self.view_manager.show()
+            self.view_manager.raise_()
+            self.view_manager.activateWindow()
+    
+    def show_command_palette(self):
+        """显示命令面板 [v0.5.0]"""
+        try:
+            from src.command_palette import CommandPalette
+            palette = CommandPalette(self.pet_window if self.pet_window else None)
+            palette.command_selected.connect(self.handle_command)
+            palette.exec_()
+        except Exception as e:
+            print(f"[命令面板] 显示失败: {e}")
+            self.logger.error(f"命令面板显示失败: {e}")
+    
+    def handle_command(self, command_id: str):
+        """处理命令面板命令 [v0.5.0]"""
+        command_map = {
+            'new_task': self.show_todo,
+            'new_note': self.show_note_window,
+            'open_todo': self.show_todo,
+            'open_notes': self.show_note_window,
+            'open_pomodoro': lambda: self.pomodoro_window.show() if self.pomodoro_window else None,
+            'open_settings': self.show_settings,
+            'export_data': self.export_data,
+            'import_data': self.import_data,
+            'show_statistics': lambda: self.todo_window.show_statistics() if self.todo_window and hasattr(self.todo_window, 'show_statistics') else None,
+        }
+        
+        handler = command_map.get(command_id)
+        if handler:
+            try:
+                handler()
+            except Exception as e:
+                print(f"[命令处理] 执行命令 {command_id} 失败: {e}")
+                self.logger.error(f"执行命令失败: {command_id} - {e}")
+    
+    def export_data(self):
+        """导出数据 [v0.5.0]"""
+        if self.data_exporter:
+            try:
+                self.data_exporter.export_to_json(parent_widget=self.pet_window if self.pet_window else None)
+            except Exception as e:
+                print(f"[数据导出] 失败: {e}")
+                self.logger.error(f"数据导出失败: {e}")
+        else:
+            QMessageBox.warning(
+                self.pet_window if self.pet_window else None,
+                "功能不可用",
+                "数据导出功能未初始化"
+            )
+    
+    def import_data(self):
+        """导入数据 [v0.5.0]"""
+        if self.data_importer:
+            try:
+                if self.data_importer.import_from_json(parent_widget=self.pet_window if self.pet_window else None):
+                    # 刷新窗口
+                    if self.todo_window:
+                        self.todo_window.load_tasks()
+                    if self.note_window:
+                        self.note_window.load_notes()
+            except Exception as e:
+                print(f"[数据导入] 失败: {e}")
+                self.logger.error(f"数据导入失败: {e}")
+        else:
+            QMessageBox.warning(
+                self.pet_window if self.pet_window else None,
+                "功能不可用",
+                "数据导入功能未初始化"
+            )
     
     # ========== v0.4.0 新窗口显示方法 ==========
     
@@ -479,14 +702,22 @@ class DesktopPetApp:
                 from src.pet_shop import PetShopWindow
                 active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
                 pet_id = active_pet['id'] if active_pet else None
-                self.shop_window = PetShopWindow(database=self.database, pet_id=pet_id)
+                self.shop_window = PetShopWindow(
+                    database=self.database,
+                    pet_id=pet_id
+                )
             
-            self.shop_window.load_points()
+            if hasattr(self.shop_window, 'load_points'):
+                self.shop_window.load_points()
             self.shop_window.show()
             self.shop_window.raise_()
             self.shop_window.activateWindow()
         except Exception as e:
             print(f"[应用] 打开商店窗口失败: {e}")
+            import traceback
+            traceback.print_exc()
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(None, "错误", f"打开商店窗口失败：\n{str(e)}")
     
     def quit_app(self):
         """退出应用"""

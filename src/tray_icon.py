@@ -27,6 +27,11 @@ class SystemTray(QSystemTrayIcon):
     show_todo_signal = pyqtSignal()
     show_settings_signal = pyqtSignal()
     quit_signal = pyqtSignal()
+    # v0.5.0 新信号
+    show_note_signal = pyqtSignal()
+    show_view_signal = pyqtSignal()
+    export_signal = pyqtSignal()
+    import_signal = pyqtSignal()
     
     def __init__(self, icon_path="assets/icons/tray_icon.png", parent=None):
         """
@@ -67,30 +72,55 @@ class SystemTray(QSystemTrayIcon):
         """创建托盘菜单"""
         # 显示/隐藏宠物
         self.show_action = QAction("显示宠物", self)
-        self.show_action.triggered.connect(self.show_pet_signal.emit)
+        self.show_action.triggered.connect(self.show_pet_signal)
         self.menu.addAction(self.show_action)
         
         self.hide_action = QAction("隐藏宠物", self)
-        self.hide_action.triggered.connect(self.hide_pet_signal.emit)
+        self.hide_action.triggered.connect(self.hide_pet_signal)
         self.menu.addAction(self.hide_action)
         
         self.menu.addSeparator()
         
         # 待办事项
         todo_action = QAction("📝 待办事项", self)
-        todo_action.triggered.connect(self.show_todo_signal.emit)
+        todo_action.triggered.connect(self.show_todo_signal)
         self.menu.addAction(todo_action)
+        
+        # 便签 [v0.5.0]
+        note_action = QAction("📄 便签", self)
+        note_action.triggered.connect(self.show_note_signal)
+        self.menu.addAction(note_action)
+        
+        # 视图切换 [v0.5.0]
+        view_action = QAction("📊 视图切换", self)
+        view_action.triggered.connect(self.show_view_signal)
+        self.menu.addAction(view_action)
+        
+        self.menu.addSeparator()
+        
+        # 数据管理 [v0.5.0]
+        data_menu = self.menu.addMenu("💾 数据管理")
+        
+        export_action = QAction("导出数据", self)
+        export_action.triggered.connect(self.export_signal)
+        data_menu.addAction(export_action)
+        
+        import_action = QAction("导入数据", self)
+        import_action.triggered.connect(self.import_signal)
+        data_menu.addAction(import_action)
+        
+        self.menu.addSeparator()
         
         # 设置
         settings_action = QAction("⚙️ 设置", self)
-        settings_action.triggered.connect(self.show_settings_signal.emit)
+        settings_action.triggered.connect(self.show_settings_signal)
         self.menu.addAction(settings_action)
         
         self.menu.addSeparator()
         
         # 退出
         quit_action = QAction("❌ 退出", self)
-        quit_action.triggered.connect(self.quit_signal.emit)
+        quit_action.triggered.connect(self.quit_signal)
         self.menu.addAction(quit_action)
     
     def on_activated(self, reason):
