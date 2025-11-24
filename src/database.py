@@ -133,6 +133,8 @@ class Database:
                 position_x INTEGER DEFAULT 100,
                 position_y INTEGER DEFAULT 100,
                 skin TEXT DEFAULT 'default',
+                character_pack TEXT DEFAULT 'default',
+                pack_overrides TEXT,
                 evolution_stage INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
                 last_fed_at TEXT,
@@ -181,6 +183,17 @@ class Database:
             )
         """)
         
+        # 补充宠物表新字段（向后兼容）
+        try:
+            self.cursor.execute("ALTER TABLE pets ADD COLUMN character_pack TEXT DEFAULT 'default'")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            self.cursor.execute("ALTER TABLE pets ADD COLUMN pack_overrides TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         # 创建图片识别任务表 [v0.4.0]
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS image_tasks (
@@ -978,7 +991,8 @@ class Database:
     
     # --- 宠物相关 ---
     
-    def create_pet(self, name: str, pet_type: str = 'cat') -> int:
+    def create_pet(self, name: str, pet_type: str = 'cat', character_pack: str = 'default',
+                   pack_overrides: Optional[str] = None) -> int:
         """
         创建新宠物
         
@@ -995,9 +1009,9 @@ class Database:
             
             self.cursor.execute("""
                 INSERT INTO pets 
-                (name, pet_type, created_at)
-                VALUES (?, ?, ?)
-            """, (name, pet_type, now))
+                (name, pet_type, character_pack, pack_overrides, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (name, pet_type, character_pack, pack_overrides, now))
             
             self.conn.commit()
             pet_id = self.cursor.lastrowid

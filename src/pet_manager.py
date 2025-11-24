@@ -9,6 +9,11 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from typing import List, Dict, Optional
 import sys
 
+try:
+    from src.character_pack_loader import get_character_pack_loader, CharacterPack
+except ImportError:
+    from character_pack_loader import get_character_pack_loader, CharacterPack
+
 class PetManager(QObject):
     """多宠物管理器"""
     
@@ -17,13 +22,16 @@ class PetManager(QObject):
     pet_removed = pyqtSignal(int)  # 移除宠物
     active_pet_changed = pyqtSignal(int)  # 切换激活宠物
     
-    def __init__(self, database=None):
+    def __init__(self, database=None, config=None):
         super().__init__()
         
         self.database = database
+        self.config = config or {}
         self.pets = []  # 宠物列表
         self.active_pet_id = None
         self.pet_windows = {}  # pet_id -> PetWindow实例
+        self.pack_loader = get_character_pack_loader()
+        self.default_pack_id = self._resolve_default_pack()
         
         # 加载所有宠物
         if self.database:
@@ -51,7 +59,25 @@ class PetManager(QObject):
         if self.active_pet_id:
             print(f"[宠物管理器] 当前激活宠物: ID={self.active_pet_id}")
     
-    def create_pet(self, name: str, pet_type: str = 'cat') -> Optional[int]:
+    def _resolve_default_pack(self) -> str:
+        if isinstance(self.config, dict):
+            pet_conf = self.config.get('Pet', self.config.get('pet', {}))
+            if isinstance(pet_conf, dict):
+                return pet_conf.get('default_pack', 'shimeji')
+        return 'shimeji'
+
+    def get_available_packs(self) -> List[CharacterPack]:
+        return self.pack_loader.list_packs()
+
+    def get_character_pack(self, pet_id: Optional[int] = None) -> Optional[CharacterPack]:
+        pet = self.get_pet(pet_id) if pet_id else self.get_active_pet()
+        pack_id = (pet or {}).get('character_pack') or self.default_pack_id
+        pack = self.pack_loader.get_pack(pack_id)
+        if pack:
+            return pack
+        return self.pack_loader.get_default_pack()
+
+    def create_pet(self, name: str, pet_type: str = 'cat', character_pack: Optional[str] = None) -> Optional[int]:
         """
         创建新宠物
         
@@ -71,7 +97,8 @@ class PetManager(QObject):
             return None
         
         # 创建宠物
-        pet_id = self.database.create_pet(name, pet_type)
+        pack_id = character_pack or self.default_pack_id
+        pet_id = self.database.create_pet(name, pet_type, pack_id)
         
         if pet_id:
             # 重新加载宠物列表
@@ -85,9 +112,9 @@ class PetManager(QObject):
         
         return None
     
-    def get_pet(self, pet_id: int) -> Optional[Dict]:
+    def get_pet(self, pet_id: Optional[int]) -> Optional[Dict]:
         """获取宠物信息"""
-        if not self.database:
+        if not self.database or pet_id is None:
             return None
         
         return self.database.get_pet(pet_id)
@@ -149,6 +176,18 @@ class PetManager(QObject):
     def get_all_pets(self) -> List[Dict]:
         """获取所有宠物"""
         return self.pets.copy()
+
+    def set_pet_pack(self, pet_id: int, pack_id: str) -> bool:
+        """更新宠物绑定的角色包"""
+        if not self.database:
+            return False
+        updated = self.database.update_pet(pet_id, character_pack=pack_id)
+        if updated:
+            for pet in self.pets:
+                if pet['id'] == pet_id:
+                    pet['character_pack'] = pack_id
+                    break
+        return updated
     
     def register_pet_window(self, pet_id: int, window):
         """

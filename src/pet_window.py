@@ -8,20 +8,24 @@ Pet Window Module - 负责宠物的显示、动画和交互
 import sys
 import os
 from PyQt5.QtWidgets import QWidget, QLabel, QMenu, QAction
-from PyQt5.QtCore import Qt, QTimer, QPoint, QRect, QPropertyAnimation, QEasingCurve, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, QPoint, QPointF, QRect, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QPixmap, QMovie, QCursor
 import random
+import platform
+from typing import Optional, Dict
 
 # 导入工具函数
 try:
     from src.utils import get_resource_path
     from src.sound_manager import get_sound_manager
     from src.modern_ui import COLORS
+    from src.character_pack_loader import get_character_pack_loader, CharacterPack
 except ImportError:
     from utils import get_resource_path
     try:
         from sound_manager import get_sound_manager
         from modern_ui import COLORS
+        from character_pack_loader import get_character_pack_loader, CharacterPack
     except ImportError:
         get_sound_manager = None
         COLORS = {'background': '#e0e5ec', 'surface': '#e0e5ec', 'primary': '#6366f1', 'primary_dark': '#4f46e5', 
@@ -35,10 +39,18 @@ class PetWindow(QWidget):
     # 信号 [v0.4.0]
     image_dropped = pyqtSignal(str)  # 图片拖放信号
     
-    def __init__(self, config=None, pet_id=None):
+    def __init__(self, config=None, pet_id=None, pet_profile=None, character_pack_id=None):
         super().__init__()
         self.config = config or {}
+        self.pet_profile = pet_profile.copy() if isinstance(pet_profile, dict) else {}
         self.pet_id = pet_id  # [v0.4.0] 宠物ID，支持多宠物
+        self.pack_loader = get_character_pack_loader()
+        self.character_pack_id = character_pack_id or self.pet_profile.get('character_pack') or self._get_default_pack_id()
+        self.character_pack: Optional[CharacterPack] = self.pack_loader.get_pack(self.character_pack_id)
+        if not self.character_pack:
+            self.character_pack = self.pack_loader.get_default_pack()
+            if self.character_pack:
+                self.character_pack_id = self.character_pack.pack_id
         
         # 窗口属性
         self.is_dragging = False
@@ -46,10 +58,14 @@ class PetWindow(QWidget):
         
         # 动画状态
         self.current_animation = "idle"
-        self.animation_states = ["idle", "walk", "sleep", "happy", "alert", "eat", "stretch", "excited", "sad"]
+        if self.character_pack and self.character_pack.animations:
+            self.animation_states = list(self.character_pack.animations.keys())
+        else:
+            self.animation_states = ["idle", "walk", "sleep", "happy", "alert", "eat", "stretch", "excited", "sad"]
         self.movie = None  # 当前播放的动画
         self.animation_cache = {}  # 动画缓存字典
         self.animation_paused = False  # 动画是否暂停
+        self.base_pet_size = self._resolve_base_size()
         
         # 交互状态
         self.is_hovered = False  # 鼠标是否悬停
@@ -86,6 +102,35 @@ class PetWindow(QWidget):
         
         # 动画配置
         self.animation_config = self._load_animation_config()
+        self.behavior_config = self._load_behavior_config()
+        self.enable_gravity = self.behavior_config.get('enable_gravity', True)
+        self.edge_bounce = self.behavior_config.get('edge_bounce', True)
+        self.gravity_strength = float(self.behavior_config.get('gravity', 1.3))
+        self.max_fall_speed = float(self.behavior_config.get('max_fall_speed', 18.0))
+        self.climb_speed = float(self.behavior_config.get('climb_speed', 1.8))
+        self.ceiling_speed = float(self.behavior_config.get('ceiling_speed', 2.0))
+        self.motion_state = "ground"
+        self.velocity = QPointF(0.0, 0.0)
+        self.attached_surface = None
+        self.surface_elapsed = 0
+        self.surface_duration_limit = 0
+        self.surface_direction = 1
+        self.window_rects = []
+        self.frame_animation_state = None
+        
+        self.frame_timer = QTimer(self)
+        self.frame_timer.setSingleShot(True)
+        self.frame_timer.timeout.connect(self._advance_frame_animation)
+        
+        self.physics_timer = QTimer(self)
+        self.physics_timer.setInterval(16)
+        self.physics_timer.timeout.connect(self._update_physics)
+        
+        self.window_scan_timer = QTimer(self)
+        self.window_scan_timer.setInterval(3000)
+        self.window_scan_timer.timeout.connect(self._scan_foreground_windows)
+        self.window_scan_timer.start(3000)
+        self._scan_foreground_windows()
         
         # 初始化UI
         self.init_ui()
@@ -131,6 +176,114 @@ class PetWindow(QWidget):
             print(f"[宠物] 加载动画配置失败: {e}")
         
         return config
+
+    def _load_behavior_config(self) -> Dict:
+        """加载行为配置，包含物理相关参数"""
+        defaults = {
+            'auto_move': True,
+            'random_action': True,
+            'action_interval': 10,
+            'enable_gravity': True,
+            'edge_bounce': True,
+            'gravity': 1.3,
+            'max_fall_speed': 18.0,
+            'climb_speed': 1.8,
+            'ceiling_speed': 2.0
+        }
+        source = {}
+        if isinstance(self.config, dict):
+            source = self.config.get('Behavior') or self.config.get('behavior') or {}
+        if source:
+            def as_bool(key, default):
+                value = source.get(key, default)
+                if isinstance(value, str):
+                    return value.lower() == 'true'
+                return bool(value)
+            defaults['auto_move'] = as_bool('auto_move', defaults['auto_move'])
+            defaults['random_action'] = as_bool('random_action', defaults['random_action'])
+            defaults['enable_gravity'] = as_bool('enable_gravity', defaults['enable_gravity'])
+            defaults['edge_bounce'] = as_bool('edge_bounce', defaults['edge_bounce'])
+            defaults['action_interval'] = int(source.get('action_interval', defaults['action_interval']))
+            defaults['gravity'] = float(source.get('gravity', defaults['gravity']))
+            defaults['max_fall_speed'] = float(source.get('max_fall_speed', defaults['max_fall_speed']))
+            defaults['climb_speed'] = float(source.get('climb_speed', defaults['climb_speed']))
+            defaults['ceiling_speed'] = float(source.get('ceiling_speed', defaults['ceiling_speed']))
+        return defaults
+
+    def _get_default_pack_id(self) -> str:
+        """根据配置解析默认角色包"""
+        if isinstance(self.config, dict):
+            pet_config = self.config.get('Pet') or self.config.get('pet') or {}
+            if isinstance(pet_config, dict):
+                return pet_config.get('default_pack', 'shimeji')
+        return 'shimeji'
+    
+    def _resolve_base_size(self) -> int:
+        """解析配置中的基础尺寸"""
+        size = 128
+        try:
+            if isinstance(self.config, dict):
+                pet_conf = self.config.get('Pet') or self.config.get('pet')
+                if isinstance(pet_conf, dict):
+                    candidate = pet_conf.get('size')
+                    if candidate is not None:
+                        size = int(candidate)
+                else:
+                    candidate = self.config.get('size')
+                    if candidate is not None:
+                        size = int(candidate)
+            elif hasattr(self.config, 'get'):
+                candidate = self.config.get('size', size)
+                if candidate is not None:
+                    size = int(candidate)
+        except Exception:
+            size = 128
+        return max(48, size)
+    
+    def _calculate_sprite_geometry(self, base_size: Optional[int] = None):
+        """根据角色包帧大小计算窗口尺寸"""
+        base = max(48, base_size or self.base_pet_size or 128)
+        sprite_scale = 1.0
+        width = height = base
+        if self.character_pack:
+            frame_size = self.character_pack.metadata.get('frame_size')
+            if isinstance(frame_size, list) and len(frame_size) == 2:
+                try:
+                    frame_width = max(1, int(frame_size[0]))
+                    frame_height = max(1, int(frame_size[1]))
+                except (TypeError, ValueError):
+                    frame_width = frame_height = base
+                base_dim = max(frame_width, frame_height, 1)
+                sprite_scale = base / base_dim if base_dim else 1.0
+                width = max(48, int(frame_width * sprite_scale))
+                height = max(48, int(frame_height * sprite_scale))
+        self.sprite_scale = sprite_scale
+        return width, height
+    
+    def apply_character_pack(self, pack_id: str) -> bool:
+        """动态切换角色包并刷新动画"""
+        if not pack_id:
+            return False
+        pack = self.pack_loader.get_pack(pack_id)
+        if not pack:
+            print(f"[宠物] 未找到角色包: {pack_id}")
+            return False
+        self.character_pack = pack
+        self.character_pack_id = pack.pack_id
+        self.pet_profile['character_pack'] = pack.pack_id
+        if pack.animations:
+            self.animation_states = list(pack.animations.keys())
+        width, height = self._calculate_sprite_geometry(self.base_pet_size)
+        self.setFixedSize(width, height)
+        if hasattr(self, 'pet_label'):
+            self.pet_label.setGeometry(0, 0, width, height)
+        self._preload_animations()
+        default_animation = pack.default_animation
+        if not self.load_animation(default_animation):
+            self.load_animation("idle")
+        if self.enable_gravity:
+            QTimer.singleShot(50, self._start_fall_if_needed)
+        return True
     
     def init_ui(self):
         """初始化用户界面"""
@@ -150,17 +303,15 @@ class PetWindow(QWidget):
         # 启用鼠标追踪（用于悬停效果）
         self.setMouseTracking(True)
         
-        # 设置窗口大小（支持嵌套配置）
-        if isinstance(self.config, dict) and 'Pet' in self.config:
-            pet_size = int(self.config['Pet'].get('size', 128))
-        else:
-            pet_size = self.config.get('size', 128)
-        self.setFixedSize(pet_size, pet_size)
+        # 设置窗口大小（支持嵌套配置 + 角色包尺寸）
+        self.sprite_scale = 1.0
+        width, height = self._calculate_sprite_geometry(self.base_pet_size)
+        self.setFixedSize(width, height)
         
         # 创建标签用于显示宠物图片/动画
         self.pet_label = QLabel(self)
         self.pet_label.setAlignment(Qt.AlignCenter)
-        self.pet_label.setGeometry(0, 0, pet_size, pet_size)
+        self.pet_label.setGeometry(0, 0, width, height)
         
         # 让标签不接收鼠标事件，事件由父窗口处理
         self.pet_label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -190,6 +341,9 @@ class PetWindow(QWidget):
         else:
             start_x = self.config.get('start_position_x', 100)
             start_y = self.config.get('start_position_y', 100)
+        if self.pet_profile:
+            start_x = int(self.pet_profile.get('position_x', start_x))
+            start_y = int(self.pet_profile.get('position_y', start_y))
         self.move(start_x, start_y)
     
     def _preload_animations(self):
@@ -199,6 +353,16 @@ class PetWindow(QWidget):
         if not self.animation_config.get('enable_animation', True):
             print("  [跳过] 动画已禁用")
             return
+        
+        self.animation_cache.clear()
+        
+        if self.character_pack and self.character_pack.animations:
+            self._preload_pack_animations()
+            if self.animation_cache:
+                print(f"[宠物] 已加载 {len(self.animation_cache)} 个角色包动画")
+                return
+            else:
+                print("[宠物] 角色包动画加载失败，回退到默认资源")
         
         for animation_name in self.animation_states:
             try:
@@ -236,6 +400,32 @@ class PetWindow(QWidget):
                 print(f"  [ERROR] 预加载{animation_name}失败: {e}")
         
         print(f"[宠物] 预加载完成，共{len(self.animation_cache)}个动画")
+
+    def _preload_pack_animations(self):
+        """从角色包加载帧序列"""
+        speed = max(0.1, float(self.animation_config.get('animation_speed', 1.0)))
+        for animation_name, animation in self.character_pack.animations.items():
+            frames_data = []
+            for frame in animation.frames:
+                pixmap = QPixmap(str(frame.path))
+                if pixmap.isNull():
+                    print(f"[宠物] [WARN] 无法加载帧 {frame.path}")
+                    frames_data = []
+                    break
+                target_pixmap = pixmap.scaled(
+                    self.pet_label.size(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+                duration = max(20, int(frame.duration / speed))
+                frames_data.append({'pixmap': target_pixmap, 'duration': duration})
+            if not frames_data:
+                continue
+            self.animation_cache[animation_name] = {
+                'type': 'frames',
+                'frames': frames_data,
+                'loop': animation.loop
+            }
     
     def load_animation(self, animation_name):
         """
@@ -262,6 +452,7 @@ class PetWindow(QWidget):
                 
                 if cached['type'] == 'gif':
                     # 使用缓存的GIF
+                    self._clear_frame_animation()
                     self.movie = cached['movie']
                     self.pet_label.setMovie(self.movie)
                     self.pet_label.setStyleSheet("")
@@ -272,6 +463,7 @@ class PetWindow(QWidget):
                     
                 elif cached['type'] == 'png':
                     # 使用缓存的PNG
+                    self._clear_frame_animation()
                     self.pet_label.setPixmap(cached['pixmap'].scaled(
                         self.pet_label.size(),
                         Qt.KeepAspectRatio,
@@ -281,6 +473,15 @@ class PetWindow(QWidget):
                     self.movie = None
                     self.current_animation = animation_name
                     print(f"[宠物] 加载图片(缓存): {animation_name}.png")
+                    return True
+                
+                elif cached['type'] == 'frames':
+                    self._start_frame_animation(
+                        animation_name,
+                        cached['frames'],
+                        cached.get('loop', True)
+                    )
+                    print(f"[宠物] 加载帧动画(缓存): {animation_name}")
                     return True
             
             # 如果缓存中没有，尝试直接加载（降级方案）
@@ -362,6 +563,9 @@ class PetWindow(QWidget):
                         Qt.SmoothTransformation
                     ))
                     return True
+                elif cached['type'] == 'frames':
+                    self._start_frame_animation('idle', cached['frames'], cached.get('loop', True))
+                    return True
             
             # 最终降级：显示文字
             print(f"[宠物] 最终降级：显示文字表情")
@@ -392,6 +596,52 @@ class PetWindow(QWidget):
         except Exception as e:
             print(f"[宠物] 错误：降级方案也失败了: {e}")
             return False
+
+    def _clear_frame_animation(self):
+        """停止当前帧动画"""
+        if self.frame_animation_state:
+            self.frame_timer.stop()
+            self.frame_animation_state = None
+
+    def _start_frame_animation(self, animation_name, frames, loop=True):
+        """播放帧序列动画"""
+        if not frames:
+            return
+        self._clear_frame_animation()
+        self.movie = None
+        self.pet_label.setMovie(None)
+        self.frame_animation_state = {
+            'name': animation_name,
+            'frames': frames,
+            'loop': loop,
+            'index': 0
+        }
+        self.current_animation = animation_name
+        self._apply_frame(frames[0])
+        if len(frames) > 1:
+            self.frame_timer.start(frames[0]['duration'])
+
+    def _advance_frame_animation(self):
+        """切换到下一帧"""
+        if not self.frame_animation_state:
+            return
+        state = self.frame_animation_state
+        state['index'] += 1
+        if state['index'] >= len(state['frames']):
+            if not state['loop']:
+                self._clear_frame_animation()
+                return
+            state['index'] = 0
+        frame = state['frames'][state['index']]
+        self._apply_frame(frame)
+        self.frame_timer.start(frame['duration'])
+
+    def _apply_frame(self, frame):
+        """将帧图像绘制到标签"""
+        pixmap = frame.get('pixmap')
+        if pixmap:
+            self.pet_label.setPixmap(pixmap)
+            self.pet_label.setStyleSheet("")
     
     def pause_animation(self):
         """暂停当前动画"""
@@ -413,20 +663,9 @@ class PetWindow(QWidget):
     
     def start_auto_behavior(self):
         """启动自动行为"""
-        # 获取行为配置（支持嵌套配置）
-        if isinstance(self.config, dict) and 'Behavior' in self.config:
-            behavior_config = self.config['Behavior']
-            auto_move = behavior_config.get('auto_move', True)
-            if isinstance(auto_move, str):
-                auto_move = auto_move.lower() == 'true'
-            random_action = behavior_config.get('random_action', True)
-            if isinstance(random_action, str):
-                random_action = random_action.lower() == 'true'
-            action_interval = int(behavior_config.get('action_interval', 10))
-        else:
-            auto_move = self.config.get('auto_move', True)
-            random_action = self.config.get('random_action', True)
-            action_interval = self.config.get('action_interval', 10)
+        auto_move = self.behavior_config.get('auto_move', True)
+        random_action = self.behavior_config.get('random_action', True)
+        action_interval = int(self.behavior_config.get('action_interval', 10))
         
         # 自动移动计时器
         if auto_move:
@@ -520,8 +759,10 @@ class PetWindow(QWidget):
             return
         
         # 随机选择一个动画状态（排除walk，因为walk只在移动时播放）
-        idle_actions = ["idle", "sleep", "happy", "alert", "eat", "stretch"]
-        action = random.choice(idle_actions)
+        available = [name for name in self.animation_states if name not in ("walk", "run")]
+        if not available:
+            available = ["idle"]
+        action = random.choice(available)
         
         # 播放对应动画
         self.load_animation(action)
@@ -542,6 +783,207 @@ class PetWindow(QWidget):
             }
             duration = duration_map.get(action, 2000)
             QTimer.singleShot(duration, lambda: self.load_animation("idle"))
+
+    # ========== 物理与攀爬逻辑 ==========
+
+    def _start_fall_if_needed(self):
+        if not self.enable_gravity:
+            return
+        screen = self.screen().geometry()
+        floor_y = screen.bottom() - self.height()
+        if self.y() < floor_y - 5:
+            self._start_fall()
+        else:
+            self.motion_state = "ground"
+
+    def _start_fall(self, initial_velocity: Optional[QPointF] = None):
+        if not self.enable_gravity:
+            return
+        vx = initial_velocity.x() if initial_velocity else 0.0
+        vy = initial_velocity.y() if initial_velocity else 0.0
+        self.velocity = QPointF(vx, vy)
+        self.motion_state = "falling"
+        self.attached_surface = None
+        self.surface_elapsed = 0
+        self.surface_duration_limit = 0
+        if self.current_animation != "fall":
+            self.load_animation("fall")
+        if not self.physics_timer.isActive():
+            self.physics_timer.start()
+
+    def _update_physics(self):
+        if not self.enable_gravity:
+            self.physics_timer.stop()
+            return
+        if self.motion_state == "falling":
+            self.velocity.setY(min(self.velocity.y() + self.gravity_strength, self.max_fall_speed))
+            new_x = self.x() + self.velocity.x()
+            new_y = self.y() + self.velocity.y()
+            screen = self.screen().geometry()
+            floor_y = screen.bottom() - self.height()
+            if new_y >= floor_y:
+                new_y = floor_y
+                impact = self.velocity.y()
+                self.velocity = QPointF(0.0, 0.0)
+                self.motion_state = "ground"
+                self.physics_timer.stop()
+                if impact > 6 and self.load_animation("bounce"):
+                    QTimer.singleShot(450, lambda: self.load_animation("idle"))
+                else:
+                    self.load_animation("idle")
+                self.move(int(new_x), int(new_y))
+                return
+            candidate = QRect(int(new_x), int(new_y), self.width(), self.height())
+            surface = self._detect_surface_contact(candidate)
+            if surface:
+                self._attach_to_surface(surface)
+                return
+            self.move(candidate.topLeft())
+        elif self.motion_state in ("climb_wall", "climb_ceiling"):
+            self._handle_surface_motion()
+        else:
+            if self.physics_timer.isActive():
+                self.physics_timer.stop()
+
+    def _detect_surface_contact(self, rect: QRect) -> Optional[Dict]:
+        tolerance = 8
+        if not self.character_pack:
+            return None
+        # 窗口表面
+        for win_rect in self.window_rects:
+            # 顶部
+            if self.character_pack.supports("climb_ceiling"):
+                if abs(rect.bottom() - win_rect.top()) <= tolerance:
+                    if self._overlap(rect.left(), rect.right(), win_rect.left(), win_rect.right()):
+                        return {"type": "ceiling", "rect": win_rect}
+            # 左侧
+            if self.character_pack.supports("climb_wall"):
+                if abs(rect.right() - win_rect.left()) <= tolerance:
+                    if self._overlap(rect.top(), rect.bottom(), win_rect.top(), win_rect.bottom()):
+                        return {"type": "wall", "rect": win_rect, "side": "left"}
+                if abs(rect.left() - win_rect.right()) <= tolerance:
+                    if self._overlap(rect.top(), rect.bottom(), win_rect.top(), win_rect.bottom()):
+                        return {"type": "wall", "rect": win_rect, "side": "right"}
+        # 屏幕边界
+        screen = self.screen().geometry()
+        if self.character_pack.supports("climb_ceiling"):
+            if rect.top() <= screen.top() + tolerance:
+                return {"type": "ceiling", "rect": screen}
+        if self.character_pack.supports("climb_wall"):
+            if rect.left() <= screen.left() + tolerance:
+                return {"type": "wall", "rect": screen, "side": "left"}
+            if rect.right() >= screen.right() - tolerance:
+                return {"type": "wall", "rect": screen, "side": "right"}
+        return None
+
+    def _attach_to_surface(self, surface: Dict):
+        """附着到墙面或天花板"""
+        self.attached_surface = surface
+        self.motion_state = "climb_ceiling" if surface["type"] == "ceiling" else "climb_wall"
+        self.surface_direction = -1 if surface.get("side") == "left" else 1
+        self.surface_elapsed = 0
+        self.surface_duration_limit = random.randint(3000, 7000)
+        if surface["type"] == "ceiling":
+            if not self.load_animation("grab_ceiling"):
+                self.load_animation("climb_ceiling")
+        else:
+            if not self.load_animation("grab_wall"):
+                self.load_animation("climb_wall")
+        if not self.physics_timer.isActive():
+            self.physics_timer.start()
+
+    def _handle_surface_motion(self):
+        if not self.attached_surface:
+            self._start_fall()
+            return
+        interval = self.physics_timer.interval()
+        self.surface_elapsed += interval
+        if self.surface_duration_limit and self.surface_elapsed >= self.surface_duration_limit:
+            self._release_surface()
+            return
+        rect = self.attached_surface["rect"]
+        if self.motion_state == "climb_ceiling":
+            speed = self.ceiling_speed * self.surface_direction
+            new_x = self.x() + speed
+            left_bound = rect.left() - self.width()
+            right_bound = rect.right()
+            if new_x <= left_bound or new_x >= right_bound - 5:
+                self.surface_direction *= -1
+                new_x = max(left_bound, min(right_bound - 5, new_x))
+            self.move(int(new_x), rect.top() - self.height())
+            if self.current_animation != "climb_ceiling":
+                self.load_animation("climb_ceiling")
+        else:
+            speed = self.climb_speed * self.surface_direction
+            new_y = self.y() + speed
+            top_bound = rect.top() - self.height()
+            bottom_bound = rect.bottom() - 10
+            if new_y <= top_bound or new_y >= bottom_bound:
+                self.surface_direction *= -1
+                new_y = max(top_bound, min(bottom_bound, new_y))
+            side = self.attached_surface.get("side", "right")
+            if side == "left":
+                new_x = rect.left() - self.width()
+            elif side == "right":
+                new_x = rect.right()
+            else:
+                new_x = self.x()
+            self.move(int(new_x), int(new_y))
+            if self.current_animation != "climb_wall":
+                self.load_animation("climb_wall")
+
+    def _release_surface(self):
+        self.attached_surface = None
+        self.surface_elapsed = 0
+        self.surface_duration_limit = 0
+        self._start_fall()
+
+    def _try_attach_to_surface(self) -> bool:
+        surface = self._detect_surface_contact(self.geometry())
+        if surface:
+            self._attach_to_surface(surface)
+            return True
+        return False
+
+    def _scan_foreground_windows(self):
+        """枚举系统窗口以用于碰撞检测"""
+        if platform.system() != "Windows":
+            self.window_rects = []
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+        except ImportError:
+            self.window_rects = []
+            return
+        rects = []
+        hwnd_self = int(self.winId()) if self.winId() else None
+
+        def callback(hwnd, _lparam):
+            if hwnd == hwnd_self:
+                return True
+            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                return True
+            if ctypes.windll.user32.IsIconic(hwnd):
+                return True
+            rect = wintypes.RECT()
+            if not ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return True
+            width = rect.right - rect.left
+            height = rect.bottom - rect.top
+            if width < 80 or height < 80:
+                return True
+            rects.append(QRect(rect.left, rect.top, width, height))
+            return True
+
+        enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+        enum_func = enum_proc(callback)
+        ctypes.windll.user32.EnumWindows(enum_func, 0)
+        self.window_rects = rects
+
+    @staticmethod
+    def _overlap(a1, a2, b1, b2) -> bool:
+        return min(a2, b2) - max(a1, b1) > 20
     
     def mousePressEvent(self, event):
         """鼠标按下事件"""
@@ -599,8 +1041,12 @@ class PetWindow(QWidget):
             self.is_dragging = False
             self.is_moving = False
             
-            # 拖动结束后，恢复闲置动画
-            QTimer.singleShot(300, lambda: self.load_animation("idle"))
+            attached = self._try_attach_to_surface()
+            if not attached:
+                if self.enable_gravity:
+                    self._start_fall_if_needed()
+                # 拖动结束后，恢复闲置动画
+                QTimer.singleShot(300, lambda: self.load_animation("idle"))
             
             event.accept()
     
@@ -1068,6 +1514,18 @@ class PetWindow(QWidget):
             if hasattr(self, 'idle_check_timer') and self.idle_check_timer:
                 self.idle_check_timer.stop()
                 print("  [OK] 空闲检测定时器已停止")
+            
+            if hasattr(self, 'physics_timer') and self.physics_timer:
+                self.physics_timer.stop()
+                print("  [OK] 物理定时器已停止")
+            
+            if hasattr(self, 'window_scan_timer') and self.window_scan_timer:
+                self.window_scan_timer.stop()
+                print("  [OK] 窗口扫描定时器已停止")
+            
+            if hasattr(self, 'frame_timer') and self.frame_timer:
+                self.frame_timer.stop()
+                print("  [OK] 帧动画定时器已停止")
             
             # 停止动画
             if hasattr(self, 'movie') and self.movie:

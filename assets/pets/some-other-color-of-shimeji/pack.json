@@ -1,0 +1,431 @@
+{
+  "id": "some-other-color-of-shimeji",
+  "name": "Some-other-color-of-shimeji",
+  "source": {
+    "name": "ShimejiEE-cross-platform",
+    "url": "https://github.com/LavenderSnek/ShimejiEE-cross-platform",
+    "pack_key": "Some-other-color-of-shimeji"
+  },
+  "frame_size": [
+    128,
+    128
+  ],
+  "frame_anchor": [
+    64,
+    128
+  ],
+  "features": [
+    "multi-instance",
+    "climb_wall",
+    "climb_ceiling",
+    "fall",
+    "drag"
+  ],
+  "available_frames": [
+    "shime1.png",
+    "shime10.png",
+    "shime11.png",
+    "shime12.png",
+    "shime13.png",
+    "shime14.png",
+    "shime15.png",
+    "shime16.png",
+    "shime17.png",
+    "shime18.png",
+    "shime19.png",
+    "shime2.png",
+    "shime20.png",
+    "shime21.png",
+    "shime22.png",
+    "shime23.png",
+    "shime24.png",
+    "shime25.png",
+    "shime26.png",
+    "shime27.png",
+    "shime28.png",
+    "shime29.png",
+    "shime3.png",
+    "shime30.png",
+    "shime31.png",
+    "shime32.png",
+    "shime33.png",
+    "shime34.png",
+    "shime35.png",
+    "shime36.png",
+    "shime37.png",
+    "shime38.png",
+    "shime39.png",
+    "shime4.png",
+    "shime40.png",
+    "shime41.png",
+    "shime42.png",
+    "shime43.png",
+    "shime44.png",
+    "shime45.png",
+    "shime46.png",
+    "shime5.png",
+    "shime6.png",
+    "shime7.png",
+    "shime8.png",
+    "shime9.png"
+  ],
+  "animations": {
+    "idle": {
+      "loop": true,
+      "tags": [
+        "idle",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime1.png",
+          "duration": 250
+        }
+      ]
+    },
+    "walk": {
+      "loop": true,
+      "tags": [
+        "move",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime1.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime2.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime1.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime3.png",
+          "duration": 80
+        }
+      ]
+    },
+    "run": {
+      "loop": true,
+      "tags": [
+        "move",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime1.png",
+          "duration": 40
+        },
+        {
+          "path": "frames/shime2.png",
+          "duration": 40
+        },
+        {
+          "path": "frames/shime1.png",
+          "duration": 40
+        },
+        {
+          "path": "frames/shime3.png",
+          "duration": 40
+        }
+      ]
+    },
+    "crawl": {
+      "loop": true,
+      "tags": [
+        "move",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime20.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime21.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime20.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime21.png",
+          "duration": 90
+        }
+      ]
+    },
+    "sit": {
+      "loop": true,
+      "tags": [
+        "idle",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime11.png",
+          "duration": 250
+        }
+      ]
+    },
+    "sit_look_up": {
+      "loop": true,
+      "tags": [
+        "idle",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime26.png",
+          "duration": 250
+        }
+      ]
+    },
+    "sit_dangle": {
+      "loop": true,
+      "tags": [
+        "idle",
+        "edge"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime31.png",
+          "duration": 120
+        },
+        {
+          "path": "frames/shime32.png",
+          "duration": 120
+        },
+        {
+          "path": "frames/shime31.png",
+          "duration": 120
+        },
+        {
+          "path": "frames/shime33.png",
+          "duration": 120
+        }
+      ]
+    },
+    "sprawl": {
+      "loop": true,
+      "tags": [
+        "idle",
+        "ground"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime21.png",
+          "duration": 250
+        }
+      ]
+    },
+    "climb_wall": {
+      "loop": true,
+      "tags": [
+        "climb",
+        "wall"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime14.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime12.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime13.png",
+          "duration": 90
+        }
+      ]
+    },
+    "grab_wall": {
+      "loop": true,
+      "tags": [
+        "climb",
+        "wall"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime13.png",
+          "duration": 250
+        }
+      ]
+    },
+    "climb_ceiling": {
+      "loop": true,
+      "tags": [
+        "climb",
+        "ceiling"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime25.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime23.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime24.png",
+          "duration": 90
+        }
+      ]
+    },
+    "grab_ceiling": {
+      "loop": true,
+      "tags": [
+        "climb",
+        "ceiling"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime23.png",
+          "duration": 250
+        }
+      ]
+    },
+    "fall": {
+      "loop": true,
+      "tags": [
+        "fall"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime4.png",
+          "duration": 120
+        }
+      ]
+    },
+    "jump": {
+      "loop": true,
+      "tags": [
+        "jump"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime22.png",
+          "duration": 120
+        }
+      ]
+    },
+    "bounce": {
+      "loop": true,
+      "tags": [
+        "impact"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime18.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime19.png",
+          "duration": 80
+        }
+      ]
+    },
+    "dragged": {
+      "loop": true,
+      "tags": [
+        "drag"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime9.png",
+          "duration": 60
+        },
+        {
+          "path": "frames/shime7.png",
+          "duration": 60
+        },
+        {
+          "path": "frames/shime5.png",
+          "duration": 60
+        },
+        {
+          "path": "frames/shime6.png",
+          "duration": 60
+        },
+        {
+          "path": "frames/shime8.png",
+          "duration": 60
+        },
+        {
+          "path": "frames/shime10.png",
+          "duration": 60
+        }
+      ]
+    },
+    "stretch": {
+      "loop": true,
+      "tags": [
+        "idle"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime26.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime15.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime27.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime16.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime28.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime17.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime29.png",
+          "duration": 80
+        },
+        {
+          "path": "frames/shime11.png",
+          "duration": 80
+        }
+      ]
+    },
+    "happy": {
+      "loop": true,
+      "tags": [
+        "carry"
+      ],
+      "frames": [
+        {
+          "path": "frames/shime34.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime35.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime34.png",
+          "duration": 90
+        },
+        {
+          "path": "frames/shime36.png",
+          "duration": 90
+        }
+      ]
+    }
+  },
+  "default_animation": "idle"
+}

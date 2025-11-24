@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# TEST LINE
 """
 桌面灵宠 - 主程序入口
 Desktop Pet Assistant - Main Entry Point
@@ -12,6 +13,7 @@ Version: 0.4.0
 import sys
 import os
 import io
+from typing import Optional
 
 # 修复Qt平台插件路径问题（必须在导入PyQt5之前）
 if sys.platform == 'win32':
@@ -57,7 +59,7 @@ if sys.platform == 'win32':
     except (AttributeError, io.UnsupportedOperation):
         pass  # 在某些环境下可能不支持
 
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMessageBox, QInputDialog
 from PyQt5.QtCore import Qt
 
 # 添加项目路径到系统路径
@@ -72,6 +74,7 @@ from src.settings_window import SettingsWindow
 from src.reminder import ReminderSystem
 from src.tray_icon import SystemTray
 from src.logger import get_logger
+from src.character_pack_loader import get_character_pack_loader
 
 
 class DesktopPetApp:
@@ -83,6 +86,7 @@ class DesktopPetApp:
         self.config = None
         self.database = None
         self.pet_window = None
+        self.pet_windows = {}
         self.todo_window = None
         self.settings_window = None
         self.reminder_system = None
@@ -107,6 +111,9 @@ class DesktopPetApp:
         self.data_exporter = None  # 数据导出器
         self.data_importer = None  # 数据导入器
         self.recurring_reminder = None  # 重复提醒
+        self.transparent_task_window = None  # 透明任务窗口
+        self.signals_initialized = False
+        self.pack_loader = get_character_pack_loader()
         
         # 初始化日志系统
         self.logger = get_logger("Main")
@@ -165,11 +172,14 @@ class DesktopPetApp:
         print("\n[3/15] 初始化宠物管理器...")
         try:
             from src.pet_manager import PetManager
-            self.pet_manager = PetManager(database=self.database)
+            self.pet_manager = PetManager(database=self.database, config=self.config)
+            self.pet_manager.pet_added.connect(self.on_pet_record_added)
+            self.pet_manager.pet_removed.connect(self.on_pet_record_removed)
+            self.pet_manager.active_pet_changed.connect(self.on_active_pet_changed)
             
             # 如果没有宠物，创建默认宠物
             if self.pet_manager.get_pet_count() == 0:
-                default_pet_id = self.database.create_pet("小宠物", "cat")
+                default_pet_id = self.pet_manager.create_pet("小宠物", "cat")
                 print(f"  [OK] 创建默认宠物: ID={default_pet_id}")
             
             print("  [OK] 宠物管理器初始化完成")
@@ -195,9 +205,9 @@ class DesktopPetApp:
         # 5. 创建宠物窗口
         print("\n[5/15] 创建宠物窗口...")
         try:
-            active_pet = self.pet_manager.get_active_pet() if self.pet_manager else None
-            pet_id = active_pet['id'] if active_pet else None
-            self.pet_window = PetWindow(config=self.config, pet_id=pet_id)
+            self.build_pet_windows()
+            if not self.pet_window:
+                raise RuntimeError("未能创建任何宠物实例")
             print("  [OK] 宠物窗口创建完成")
             self.logger.info("宠物窗口创建成功")
         except Exception as e:
@@ -415,7 +425,21 @@ class DesktopPetApp:
             print(f"  [WARN] 重复提醒系统创建失败: {e}")
             self.recurring_reminder = None
         
-        # 19. 连接信号
+        # 19. 创建透明任务窗口
+        print("\n[19/21] 创建透明任务窗口...")
+        try:
+            from src.transparent_task_window import TransparentTaskWindow
+            self.transparent_task_window = TransparentTaskWindow(database=self.database)
+            # 初始隐藏，用户可以通过托盘菜单显示
+            self.transparent_task_window.hide()
+            print("  [OK] 透明任务窗口创建完成")
+            self.logger.info("透明任务窗口创建成功")
+        except Exception as e:
+            self.logger.error(f"透明任务窗口创建失败: {e}")
+            print(f"  [WARN] 透明任务窗口创建失败: {e}")
+            self.transparent_task_window = None
+        
+        # 20. 连接信号
         print("\n[19/20] 连接组件信号...")
         try:
             self.connect_signals()
@@ -425,13 +449,226 @@ class DesktopPetApp:
             self.logger.error(f"信号连接失败: {e}")
             print(f"  [ERROR] 信号连接失败: {e}")
         
-        # 20. 检查并显示新手引导 [v0.3.0]
-        print("\n[20/20] 检查新手引导...")
+        # 21. 检查并显示新手引导 [v0.3.0]
+        print("\n[21/21] 检查新手引导...")
         self.show_tutorial_if_needed()
         
         print("\n" + "=" * 60)
         print("[SUCCESS] 所有组件初始化完成！")
         print("=" * 60)
+    
+    def build_pet_windows(self):
+        """根据宠物列表创建对应的窗口实例"""
+        self.pet_windows = {}
+        if not self.pet_manager:
+            return
+        pets = self.pet_manager.get_all_pets()
+        if not pets:
+            return
+        for pet in pets:
+            window = self._create_pet_window(pet)
+            self.pet_windows[pet['id']] = window
+            self.pet_manager.register_pet_window(pet['id'], window)
+        active_id = self.pet_manager.active_pet_id or pets[0]['id']
+        self.pet_window = self.pet_windows.get(active_id)
+        self.refresh_tray_pet_menu()
+
+    def _create_pet_window(self, pet_profile):
+        window = PetWindow(
+            config=self.config,
+            pet_id=pet_profile.get('id'),
+            pet_profile=pet_profile,
+            character_pack_id=pet_profile.get('character_pack')
+        )
+        window.main_app = self
+        if self.signals_initialized:
+            self._attach_runtime_window_signals(window)
+        window.show()
+        return window
+
+    def _update_pet_window_references(self):
+        """将公共窗口引用同步到所有宠物窗口"""
+        for window in self.pet_windows.values():
+            window.todo_window = self.todo_window
+            window.settings_window = self.settings_window
+            window.pomodoro_window = self.pomodoro_window
+            window.chat_window = self.chat_window
+            window.achievements_window = self.achievements_window
+            window.inventory_window = self.inventory_window
+            window.shop_window = self.shop_window
+            window.main_app = self
+
+    def _attach_runtime_window_signals(self, window):
+        if self.image_recognizer:
+            window.image_dropped.connect(self.on_image_dropped)
+
+    def refresh_tray_pet_menu(self):
+        if not self.tray_icon:
+            return
+        pets = self.pet_manager.get_all_pets() if self.pet_manager else []
+        visible_ids = [pid for pid, wnd in self.pet_windows.items() if wnd.isVisible()]
+        self.tray_icon.update_pet_instances(pets, visible_ids)
+    
+    def on_pet_record_added(self, pet_id: int):
+        """数据库新增宠物后创建对应窗口"""
+        if not self.pet_manager:
+            return
+        pet = self.pet_manager.get_pet(pet_id)
+        if not pet:
+            return
+        window = self._create_pet_window(pet)
+        self.pet_windows[pet_id] = window
+        self.pet_manager.register_pet_window(pet_id, window)
+        if self.pet_manager.active_pet_id == pet_id or not self.pet_window:
+            self.pet_window = window
+        self.refresh_tray_pet_menu()
+    
+    def on_pet_record_removed(self, pet_id: int):
+        """宠物记录被删除后的清理工作"""
+        window = self.pet_windows.pop(pet_id, None)
+        if window:
+            window.close()
+        self.refresh_tray_pet_menu()
+        if self.pet_window and self.pet_window.pet_id == pet_id:
+            self.pet_window = None
+            if self.pet_manager:
+                active_id = self.pet_manager.active_pet_id
+                self.pet_window = self.pet_windows.get(active_id) or next(iter(self.pet_windows.values()), None)
+    
+    def on_active_pet_changed(self, pet_id: int):
+        """激活宠物切换"""
+        window = self.pet_windows.get(pet_id)
+        if window:
+            self.pet_window = window
+            window.show()
+            window.raise_()
+    
+    def _prompt_pet_selection(self, parent=None) -> Optional[int]:
+        """弹出选择宠物的对话框"""
+        if not self.pet_manager:
+            return None
+        pets = self.pet_manager.get_all_pets()
+        if not pets:
+            QMessageBox.warning(parent or self.pet_window, "没有宠物", "尚未创建任何宠物。")
+            return None
+        options = []
+        option_map = {}
+        active_id = self.pet_manager.active_pet_id
+        default_index = 0
+        for idx, pet in enumerate(pets):
+            label = f"{pet.get('name', '宠物')} (ID:{pet.get('id')})"
+            options.append(label)
+            option_map[label] = pet.get('id')
+            if pet.get('id') == active_id:
+                default_index = idx
+        selection, ok = QInputDialog.getItem(
+            parent or self.pet_window,
+            "选择宠物",
+            "请选择需要操作的宠物：",
+            options,
+            default_index,
+            False
+        )
+        if not ok:
+            return None
+        return option_map.get(selection)
+    
+    def _prompt_pack_selection(self, parent=None, default_pack_id: Optional[str] = None) -> Optional[str]:
+        """弹出选择角色包的对话框"""
+        packs = self.pack_loader.list_packs() if self.pack_loader else []
+        if not packs:
+            QMessageBox.warning(parent or self.pet_window, "没有角色包", "未在 assets/pets 中找到可用的角色包。")
+            return None
+        options = []
+        option_map = {}
+        default_index = 0
+        target_pack = default_pack_id or (self.pet_manager.default_pack_id if self.pet_manager else None)
+        for idx, pack in enumerate(packs):
+            label = f"{pack.name} ({pack.pack_id})"
+            options.append(label)
+            option_map[label] = pack.pack_id
+            if pack.pack_id == target_pack:
+                default_index = idx
+        selection, ok = QInputDialog.getItem(
+            parent or self.pet_window,
+            "选择角色包",
+            "请选择一个角色包：",
+            options,
+            default_index,
+            False
+        )
+        if not ok:
+            return None
+        return option_map.get(selection)
+    
+    def apply_pack_to_pet(self, pet_id: int, pack_id: str):
+        """更新宠物绑定的角色包并刷新窗口"""
+        if not self.pet_manager:
+            return
+        updated = self.pet_manager.set_pet_pack(pet_id, pack_id)
+        if not updated:
+            QMessageBox.warning(self.pet_window, "切换失败", "无法更新宠物的角色包。")
+            return
+        window = self.pet_windows.get(pet_id)
+        if window:
+            window.apply_character_pack(pack_id)
+        self.refresh_tray_pet_menu()
+    
+    def on_switch_pack_requested(self):
+        """托盘菜单触发的角色包切换"""
+        if not self.pet_manager:
+            QMessageBox.warning(self.pet_window, "功能不可用", "宠物管理器尚未初始化。")
+            return
+        pet_id = self._prompt_pet_selection()
+        if pet_id is None:
+            return
+        pet = self.pet_manager.get_pet(pet_id)
+        current_pack = (pet or {}).get('character_pack') or self.pet_manager.default_pack_id
+        pack_id = self._prompt_pack_selection(default_pack_id=current_pack)
+        if not pack_id:
+            return
+        self.apply_pack_to_pet(pet_id, pack_id)
+        QMessageBox.information(self.pet_window, "切换成功", "角色包已应用，宠物将立即刷新。")
+    
+    def on_tray_create_pet(self):
+        """托盘菜单触发创建新宠物"""
+        if not self.pet_manager:
+            QMessageBox.warning(self.pet_window, "功能不可用", "宠物管理器尚未初始化。")
+            return
+        suggested_name = f"新宠物{self.pet_manager.get_pet_count() + 1}"
+        name, ok = QInputDialog.getText(
+            self.pet_window,
+            "新建宠物",
+            "请输入宠物名称：",
+            text=suggested_name
+        )
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            QMessageBox.warning(self.pet_window, "名称无效", "宠物名称不能为空。")
+            return
+        pack_id = self._prompt_pack_selection(default_pack_id=self.pet_manager.default_pack_id)
+        if not pack_id:
+            return
+        new_pet_id = self.pet_manager.create_pet(name, "cat", character_pack=pack_id)
+        if not new_pet_id:
+            QMessageBox.warning(self.pet_window, "创建失败", "无法创建新的宠物实例，可能已达到上限。")
+            return
+        self.pet_manager.set_active_pet(new_pet_id)
+        QMessageBox.information(self.pet_window, "创建成功", f"宠物“{name}”已创建。")
+    
+    def on_tray_pet_visibility_changed(self, pet_id: int, visible: bool):
+        """托盘菜单中勾选/取消宠物时的回调"""
+        window = self.pet_windows.get(pet_id)
+        if not window:
+            return
+        if visible:
+            window.show()
+            window.raise_()
+        else:
+            window.hide()
+        self.refresh_tray_pet_menu()
     
     def show_tutorial_if_needed(self):
         """显示新手引导（如果是首次启动）[v0.3.0]"""
@@ -455,18 +692,7 @@ class DesktopPetApp:
         print("\n[信号连接] 连接各模块信号...")
         
         # 宠物窗口引用其他窗口
-        self.pet_window.todo_window = self.todo_window
-        self.pet_window.settings_window = self.settings_window
-        
-        # v0.4.0 新窗口引用
-        self.pet_window.pomodoro_window = self.pomodoro_window
-        self.pet_window.chat_window = self.chat_window
-        self.pet_window.achievements_window = self.achievements_window
-        self.pet_window.inventory_window = self.inventory_window
-        self.pet_window.shop_window = self.shop_window
-        
-        # 传递主程序引用（用于延迟创建窗口）
-        self.pet_window.main_app = self
+        self._update_pet_window_references()
         
         # 托盘图标信号
         if self.tray_icon:
@@ -485,14 +711,37 @@ class DesktopPetApp:
                 self.tray_icon.export_signal.connect(self.export_data)
             if hasattr(self.tray_icon, 'import_signal'):
                 self.tray_icon.import_signal.connect(self.import_data)
+            # 透明任务窗口信号
+            if hasattr(self.tray_icon, 'show_transparent_task_signal'):
+                self.tray_icon.show_transparent_task_signal.connect(self.show_transparent_task_window)
+            if hasattr(self.tray_icon, 'hide_transparent_task_signal'):
+                self.tray_icon.hide_transparent_task_signal.connect(self.hide_transparent_task_window)
+            if hasattr(self.tray_icon, 'pet_visibility_toggled'):
+                self.tray_icon.pet_visibility_toggled.connect(self.on_tray_pet_visibility_changed)
+            if hasattr(self.tray_icon, 'create_pet_signal'):
+                self.tray_icon.create_pet_signal.connect(self.on_tray_create_pet)
+            if hasattr(self.tray_icon, 'switch_pack_signal'):
+                self.tray_icon.switch_pack_signal.connect(self.on_switch_pack_requested)
         
         # 提醒系统信号
-        self.reminder_system.completed.connect(self.on_task_completed)
-        self.reminder_system.snoozed.connect(self.on_task_snoozed)
+        if self.reminder_system:
+            self.reminder_system.completed.connect(self.on_task_completed)
+            self.reminder_system.snoozed.connect(self.on_task_snoozed)
         
         # 待办窗口信号
-        self.todo_window.task_added.connect(self.on_task_added)
-        self.todo_window.task_deleted.connect(self.on_task_deleted)
+        if self.todo_window:
+            self.todo_window.task_added.connect(self.on_task_added)
+            self.todo_window.task_deleted.connect(self.on_task_deleted)
+            # 当待办窗口任务变化时，刷新透明任务窗口
+            self.todo_window.task_added.connect(self.refresh_transparent_task_window)
+            self.todo_window.task_deleted.connect(self.refresh_transparent_task_window)
+            if hasattr(self.todo_window, 'task_completed'):
+                self.todo_window.task_completed.connect(self.refresh_transparent_task_window)
+        
+        # 透明任务窗口信号
+        if self.transparent_task_window:
+            self.transparent_task_window.task_clicked.connect(self.on_transparent_task_clicked)
+            self.transparent_task_window.task_double_clicked.connect(self.on_transparent_task_double_clicked)
         
         # 设置窗口信号
         self.settings_window.settings_changed.connect(self.on_settings_changed)
@@ -531,19 +780,21 @@ class DesktopPetApp:
             # 便签窗口的信号连接（如果需要）
             pass
         
+        self.signals_initialized = True
         print("  [OK] 信号连接完成")
     
     def show_pet(self):
         """显示宠物窗口"""
+        for window in self.pet_windows.values():
+            window.show()
+            window.raise_()
         if self.pet_window:
-            self.pet_window.show()
-            self.pet_window.raise_()
             self.pet_window.activateWindow()
     
     def hide_pet(self):
         """隐藏宠物窗口"""
-        if self.pet_window:
-            self.pet_window.hide()
+        for window in self.pet_windows.values():
+            window.hide()
     
     def show_todo(self):
         """显示待办窗口"""
@@ -633,6 +884,8 @@ class DesktopPetApp:
                         self.todo_window.load_tasks()
                     if self.note_window:
                         self.note_window.load_notes()
+                    if self.transparent_task_window:
+                        self.transparent_task_window.load_tasks()
             except Exception as e:
                 print(f"[数据导入] 失败: {e}")
                 self.logger.error(f"数据导入失败: {e}")
@@ -642,6 +895,43 @@ class DesktopPetApp:
                 "功能不可用",
                 "数据导入功能未初始化"
             )
+    
+    def show_transparent_task_window(self):
+        """显示透明任务窗口"""
+        if self.transparent_task_window:
+            self.transparent_task_window.show()
+            self.transparent_task_window.raise_()
+            self.transparent_task_window.activateWindow()
+            # 更新托盘菜单状态
+            if self.tray_icon and hasattr(self.tray_icon, 'transparent_task_action'):
+                self.tray_icon.transparent_task_action.setChecked(True)
+    
+    def hide_transparent_task_window(self):
+        """隐藏透明任务窗口"""
+        if self.transparent_task_window:
+            self.transparent_task_window.hide()
+            # 更新托盘菜单状态
+            if self.tray_icon and hasattr(self.tray_icon, 'transparent_task_action'):
+                self.tray_icon.transparent_task_action.setChecked(False)
+    
+    def on_transparent_task_clicked(self, task_id: int):
+        """透明任务窗口任务点击回调"""
+        # 点击任务时打开待办窗口并定位到该任务
+        if self.todo_window:
+            self.show_todo()
+            # TODO: 可以在待办窗口中高亮显示该任务
+    
+    def on_transparent_task_double_clicked(self, task_id: int):
+        """透明任务窗口任务双击回调"""
+        # 双击任务时打开待办窗口并定位到该任务
+        if self.todo_window:
+            self.show_todo()
+            # TODO: 可以在待办窗口中打开任务编辑对话框
+    
+    def refresh_transparent_task_window(self):
+        """刷新透明任务窗口"""
+        if self.transparent_task_window and self.transparent_task_window.isVisible():
+            self.transparent_task_window.load_tasks()
     
     # ========== v0.4.0 新窗口显示方法 ==========
     
@@ -759,6 +1049,12 @@ class DesktopPetApp:
                     except Exception as e:
                         self.logger.error(f"关闭数据库失败: {e}")
                 
+                if self.pet_manager:
+                    try:
+                        self.pet_manager.save_all_positions()
+                    except Exception as e:
+                        self.logger.error(f"保存宠物位置失败: {e}")
+                
                 print("[系统] 再见！")
                 self.logger.info("应用正常退出")
                 self.app.quit()
@@ -783,6 +1079,8 @@ class DesktopPetApp:
             # 刷新待办窗口
             if self.todo_window:
                 self.todo_window.load_tasks()
+            # 刷新透明任务窗口
+            self.refresh_transparent_task_window()
             
             # [v0.4.0] 奖励经验和道具
             if self.pet_growth:
@@ -1170,4 +1468,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

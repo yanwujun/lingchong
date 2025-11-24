@@ -1,0 +1,27 @@
+{
+  "id": "unused",
+  "name": "unused",
+  "source": {
+    "name": "ShimejiEE-cross-platform",
+    "url": "https://github.com/LavenderSnek/ShimejiEE-cross-platform",
+    "pack_key": "unused"
+  },
+  "frame_size": [
+    128,
+    128
+  ],
+  "frame_anchor": [
+    64,
+    128
+  ],
+  "features": [
+    "multi-instance",
+    "climb_wall",
+    "climb_ceiling",
+    "fall",
+    "drag"
+  ],
+  "available_frames": [],
+  "animations": {},
+  "default_animation": "idle"
+}

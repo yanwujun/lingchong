@@ -32,6 +32,12 @@ class SystemTray(QSystemTrayIcon):
     show_view_signal = pyqtSignal()
     export_signal = pyqtSignal()
     import_signal = pyqtSignal()
+    # 透明任务窗口信号
+    show_transparent_task_signal = pyqtSignal()
+    hide_transparent_task_signal = pyqtSignal()
+    pet_visibility_toggled = pyqtSignal(int, bool)
+    create_pet_signal = pyqtSignal()
+    switch_pack_signal = pyqtSignal()
     
     def __init__(self, icon_path="assets/icons/tray_icon.png", parent=None):
         """
@@ -58,6 +64,7 @@ class SystemTray(QSystemTrayIcon):
         
         # 创建菜单
         self.menu = QMenu()
+        self.pet_instance_menu = None
         self.create_menu()
         
         # 设置菜单
@@ -81,10 +88,21 @@ class SystemTray(QSystemTrayIcon):
         
         self.menu.addSeparator()
         
+        self.pet_instance_menu = self.menu.addMenu("🐾 宠物实例")
+        self.update_pet_instances([], [])
+        
+        self.menu.addSeparator()
+        
         # 待办事项
         todo_action = QAction("📝 待办事项", self)
         todo_action.triggered.connect(self.show_todo_signal)
         self.menu.addAction(todo_action)
+        
+        # 透明任务窗口
+        self.transparent_task_action = QAction("🪟 透明任务窗口", self)
+        self.transparent_task_action.setCheckable(True)
+        self.transparent_task_action.triggered.connect(self.toggle_transparent_task)
+        self.menu.addAction(self.transparent_task_action)
         
         # 便签 [v0.5.0]
         note_action = QAction("📄 便签", self)
@@ -116,12 +134,36 @@ class SystemTray(QSystemTrayIcon):
         settings_action.triggered.connect(self.show_settings_signal)
         self.menu.addAction(settings_action)
         
+        switch_pack_action = QAction("🎨 切换角色包...", self)
+        switch_pack_action.triggered.connect(self.switch_pack_signal)
+        self.menu.addAction(switch_pack_action)
+        
         self.menu.addSeparator()
         
         # 退出
         quit_action = QAction("❌ 退出", self)
         quit_action.triggered.connect(self.quit_signal)
         self.menu.addAction(quit_action)
+    
+    def update_pet_instances(self, pets, visible_ids):
+        """刷新宠物实例菜单"""
+        if not self.pet_instance_menu:
+            return
+        self.pet_instance_menu.clear()
+        visible_set = set(visible_ids)
+        for pet in pets:
+            pet_id = pet.get('id')
+            label = f"{pet.get('name', '宠物')} (ID:{pet_id})"
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(pet_id in visible_set)
+            action.triggered.connect(lambda checked, pid=pet_id: self.pet_visibility_toggled.emit(pid, checked))
+            self.pet_instance_menu.addAction(action)
+        if pets:
+            self.pet_instance_menu.addSeparator()
+        create_action = QAction("➕ 新建宠物", self)
+        create_action.triggered.connect(self.create_pet_signal)
+        self.pet_instance_menu.addAction(create_action)
     
     def on_activated(self, reason):
         """
@@ -136,6 +178,13 @@ class SystemTray(QSystemTrayIcon):
         elif reason == QSystemTrayIcon.DoubleClick:
             # 双击托盘图标 - 打开待办窗口
             self.show_todo_signal.emit()
+    
+    def toggle_transparent_task(self, checked):
+        """切换透明任务窗口显示状态"""
+        if checked:
+            self.show_transparent_task_signal.emit()
+        else:
+            self.hide_transparent_task_signal.emit()
     
     def show_notification(self, title, message, icon=QSystemTrayIcon.Information, duration=3000):
         """
