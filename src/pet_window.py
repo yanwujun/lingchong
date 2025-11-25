@@ -9,7 +9,7 @@ import sys
 import os
 from PyQt5.QtWidgets import QWidget, QLabel, QMenu, QAction
 from PyQt5.QtCore import Qt, QTimer, QPoint, QPointF, QRect, QSize, QPropertyAnimation, QEasingCurve, pyqtSignal
-from PyQt5.QtGui import QPixmap, QMovie, QCursor, QImageReader
+from PyQt5.QtGui import QPixmap, QMovie, QCursor, QImageReader, QPainter, QColor, QBrush
 import random
 import platform
 from typing import Optional, Dict
@@ -250,17 +250,28 @@ class PetWindow(QWidget):
                     size = int(candidate)
         except Exception:
             size = 128
-        return max(128, size)
+        
+        # 将尺寸减小到1/4（用户要求）
+        size = int(size / 4)
+        
+        return max(32, size)  # 最小尺寸改为32，因为缩小了
     
     def _get_frame_size_hint(self) -> tuple:
         """根据角色包或实际帧大小推断单帧尺寸"""
         if self._frame_size_cache:
             return self._frame_size_cache
         
-        default_size = max(128, self.base_pet_size or 128)
+        default_size = max(32, self.base_pet_size or 32)  # 缩小后的默认尺寸
         width = height = default_size
         
-        # 1) 读取 metadata 中的 frame_size（若存在且可信）
+        # 1) 实际探测角色包帧尺寸（最优先，使用真实数据）
+        measured_size = self._measure_character_pack_frame_size()
+        
+        # 2) 若无角色包信息，则回退到默认资产的真实尺寸
+        if not measured_size:
+            measured_size = self._measure_default_asset_frame_size()
+        
+        # 3) 读取 metadata 中的 frame_size（作为参考，但不如实测可靠）
         meta_size = None
         if self.character_pack:
             frame_size = self.character_pack.metadata.get('frame_size')
@@ -269,29 +280,32 @@ class PetWindow(QWidget):
                     meta_w = max(1, int(frame_size[0]))
                     meta_h = max(1, int(frame_size[1]))
                     meta_size = (meta_w, meta_h)
+                    self._log_debug(f"从 metadata 读取 frame_size: {meta_w}x{meta_h}")
                 except (TypeError, ValueError):
                     meta_size = None
-        
-        # 2) 实际探测角色包帧尺寸（优先使用真实数据）
-        measured_size = self._measure_character_pack_frame_size()
-        
-        # 3) 若无角色包信息，则回退到默认资产的真实尺寸
-        if not measured_size:
-            measured_size = self._measure_default_asset_frame_size()
         
         # 组合结果：真实测得的尺寸优先，其次 metadata，最后默认值
         if measured_size:
             width, height = measured_size
+            self._log_debug(f"使用实测尺寸: {width}x{height}")
         elif meta_size:
             width, height = meta_size
+            self._log_debug(f"使用 metadata 尺寸: {width}x{height}")
         else:
             width = height = default_size
+            self._log_debug(f"使用默认尺寸: {width}x{height}")
         
-        # 防止出现过小值
-        width = max(width, default_size // 2)
-        height = max(height, default_size // 2)
+        # 将尺寸缩小到1/4（用户要求）
+        width = int(width / 4)
+        height = int(height / 4)
+        
+        # 确保最小尺寸，防止过小
+        min_size = max(32, default_size)  # 最小32
+        width = max(width, min_size)
+        height = max(height, min_size)
         
         self._frame_size_cache = (width, height)
+        self._log_debug(f"最终帧尺寸提示（已缩小1/4）: {width}x{height}")
         return self._frame_size_cache
     
     def _measure_character_pack_frame_size(self) -> Optional[tuple]:
@@ -299,19 +313,28 @@ class PetWindow(QWidget):
         if not self.character_pack or not self.character_pack.animations:
             return None
         max_w = max_h = 0
+        checked_count = 0
         try:
-            for animation in self.character_pack.animations.values():
-                # 限制检查帧数，避免首次加载过慢
-                for frame in animation.frames[:5]:
+            for anim_name, animation in self.character_pack.animations.items():
+                # 检查每个动画的前几帧
+                for frame in animation.frames[:10]:  # 增加检查帧数
                     frame_size = self._probe_image_size(frame.path)
                     if not frame_size:
                         continue
                     fw, fh = frame_size
                     max_w = max(max_w, fw)
                     max_h = max(max_h, fh)
+                    checked_count += 1
+                    if checked_count >= 20:  # 最多检查20帧
+                        break
+                if checked_count >= 20:
+                    break
         except Exception as exc:
             self._log_debug(f"测量角色包帧尺寸失败: {exc}")
-        return (max_w, max_h) if max_w and max_h else None
+        if max_w > 0 and max_h > 0:
+            self._log_debug(f"角色包帧尺寸检测结果: {max_w}x{max_h} (检查了 {checked_count} 帧)")
+            return (max_w, max_h)
+        return None
     
     def _measure_default_asset_frame_size(self) -> Optional[tuple]:
         """在无角色包时，尝试读取默认动画资源的尺寸"""
@@ -328,50 +351,121 @@ class PetWindow(QWidget):
         """使用 QImageReader 读取图片尺寸，避免完整加载"""
         if not path:
             return None
+        path_str = str(path)
+        if not os.path.exists(path_str):
+            return None
         try:
-            reader = QImageReader(str(path))
+            reader = QImageReader(path_str)
             if not reader.canRead():
+                # 尝试用 QPixmap 作为后备方案
+                try:
+                    pixmap = QPixmap(path_str)
+                    if not pixmap.isNull():
+                        size = pixmap.size()
+                        if size.width() > 0 and size.height() > 0:
+                            self._log_debug(f"通过 QPixmap 检测到尺寸: {path_str} -> {size.width()}x{size.height()}")
+                            return size.width(), size.height()
+                except Exception:
+                    pass
                 return None
             size = reader.size()
             if size.width() > 0 and size.height() > 0:
+                self._log_debug(f"通过 QImageReader 检测到尺寸: {path_str} -> {size.width()}x{size.height()}")
                 return size.width(), size.height()
-        except Exception:
-            return None
+        except Exception as exc:
+            self._log_debug(f"检测图片尺寸失败 {path_str}: {exc}")
+            # 后备方案：尝试用 QPixmap
+            try:
+                pixmap = QPixmap(path_str)
+                if not pixmap.isNull():
+                    size = pixmap.size()
+                    if size.width() > 0 and size.height() > 0:
+                        self._log_debug(f"通过 QPixmap(后备) 检测到尺寸: {path_str} -> {size.width()}x{size.height()}")
+                        return size.width(), size.height()
+            except Exception:
+                pass
         return None
     
     def _animation_load_succeeded(self) -> bool:
-        """统一动画加载成功后的收尾处理"""
+        """统一动画加载成功后的收尾处理 - 检查实际加载的图片尺寸"""
         try:
+            # 检查当前显示的图片/动画的实际尺寸
+            actual_size = None
+            if self.movie and self.movie.isValid():
+                actual_size = self.movie.scaledSize()
+                if actual_size.width() > 0 and actual_size.height() > 0:
+                    self._log_debug(f"GIF 动画实际尺寸: {actual_size.width()}x{actual_size.height()}")
+            elif hasattr(self, 'pet_label') and self.pet_label.pixmap():
+                pixmap = self.pet_label.pixmap()
+                if pixmap and not pixmap.isNull():
+                    actual_size = pixmap.size()
+                    self._log_debug(f"PNG 图片实际尺寸: {actual_size.width()}x{actual_size.height()}")
+            
+            # 如果实际尺寸比窗口大，立即调整
+            if actual_size and actual_size.width() > 0 and actual_size.height() > 0:
+                current_w = self.width()
+                current_h = self.height()
+                if actual_size.width() > current_w or actual_size.height() > current_h:
+                    safety = 40
+                    new_w = max(current_w, actual_size.width() + safety)
+                    new_h = max(current_h, actual_size.height() + safety)
+                    self._log_debug(
+                        f"检测到实际图片尺寸 {actual_size.width()}x{actual_size.height()} "
+                        f"大于窗口 {current_w}x{current_h}，调整到 {new_w}x{new_h}"
+                    )
+                    self._apply_window_geometry(new_w, new_h)
+                    # 更新帧尺寸缓存
+                    self._frame_size_cache = (actual_size.width(), actual_size.height())
+            
+            # 最后确保窗口安全
             self._ensure_layered_window_safe()
         except Exception as exc:
             self._log_debug(f"调整 layered window 尺寸失败: {exc}")
+            import traceback
+            traceback.print_exc()
         return True
     
     def _ensure_layered_window_safe(self):
         """保证窗口物理尺寸始终大于动画帧，避免 layered window 报错"""
         frame_w, frame_h = self._get_frame_size_hint()
-        safety_margin = 32
-        min_side = max(frame_w, frame_h, 256) + safety_margin
-        target_w = max(self.width(), min_side)
-        target_h = max(self.height(), min_side)
-        if target_w != self.width() or target_h != self.height():
+        safety_margin = 10  # 缩小安全边距
+        min_width = max(frame_w, 32) + safety_margin  # 最小尺寸改为32
+        min_height = max(frame_h, 32) + safety_margin
+        
+        current_w = self.width() if self.width() > 0 else min_width
+        current_h = self.height() if self.height() > 0 else min_height
+        
+        target_w = max(current_w, min_width)
+        target_h = max(current_h, min_height)
+        
+        if target_w != current_w or target_h != current_h:
             self._apply_window_geometry(target_w, target_h)
             self._log_debug(
-                f"LayeredWindow 调整: frame={frame_w}x{frame_h}, new_window={target_w}x{target_h}"
+                f"LayeredWindow 安全调整: frame={frame_w}x{frame_h}, "
+                f"current={current_w}x{current_h}, new={target_w}x{target_h}"
+            )
+        else:
+            self._log_debug(
+                f"LayeredWindow 尺寸检查: frame={frame_w}x{frame_h}, "
+                f"window={current_w}x{current_h} (OK)"
             )
 
     def _calculate_sprite_geometry(self, base_size: Optional[int] = None):
-        """根据角色包帧大小计算窗口尺寸"""
-        base = max(48, base_size or self.base_pet_size or 128)
-        sprite_scale = 1.0
-        frame_width, frame_height = self._get_frame_size_hint()
-        max_dim = max(frame_width, frame_height, base)
-        base_dim = max(frame_width, frame_height, 1)
-        sprite_scale = max_dim / base_dim if base_dim else 1.0
-        min_side = max(base, 128)
-        width = max(min_side, int(frame_width * sprite_scale))
-        height = max(min_side, int(frame_height * sprite_scale))
-        self.sprite_scale = sprite_scale
+        """根据角色包帧大小计算窗口尺寸 - 确保窗口至少等于帧尺寸（已缩小1/4）"""
+        base = max(32, base_size or self.base_pet_size or 32)  # 缩小后的基础尺寸
+        frame_width, frame_height = self._get_frame_size_hint()  # 已经是缩小后的尺寸
+        
+        # 窗口尺寸必须至少等于帧尺寸，加上安全边距（也缩小）
+        safety_margin = 8  # 缩小安全边距
+        min_width = max(frame_width, base) + safety_margin
+        min_height = max(frame_height, base) + safety_margin
+        
+        # 直接使用帧尺寸 + 安全边距（不再额外放大）
+        width = min_width
+        height = min_height
+        self.sprite_scale = 1.0
+        
+        self._log_debug(f"计算窗口几何（已缩小1/4）: frame={frame_width}x{frame_height}, base={base}, result={width}x{height}")
         return width, height
     
     def _apply_window_geometry(self, width: int, height: int):
@@ -423,6 +517,17 @@ class PetWindow(QWidget):
         # 设置透明背景
         self.setAttribute(Qt.WA_TranslucentBackground)
         
+        # 移除调试背景色，恢复透明
+        # self.setStyleSheet("background-color: rgba(255, 0, 0, 255);")  # 已移除调试背景
+        
+        # 确保窗口不透明（除非明确设置）
+        self.setWindowOpacity(1.0)
+        
+        self._log_debug(f"窗口初始化: 标志={bin(self.windowFlags())}, 透明度={self.windowOpacity()}, 透明背景={self.testAttribute(Qt.WA_TranslucentBackground)}")
+        
+        # 确保窗口可见性
+        self.setWindowOpacity(1.0)  # 确保完全不透明
+        
         # 启用拖放 [v0.4.0]
         self.setAcceptDrops(True)
         
@@ -445,8 +550,21 @@ class PetWindow(QWidget):
         self.pet_label.setScaledContents(True)
         self.pet_label.setGeometry(0, 0, width, height)
         
+        # 确保标签有内容才能显示（透明窗口需要子控件有内容）
+        # 暂时显示一个占位符，等动画加载后会被替换
+        self.pet_label.setText("🐱")
+        self.pet_label.setStyleSheet("""
+            QLabel {
+                background-color: transparent;
+                color: black;
+                font-size: 24px;
+            }
+        """)
+        
         # 让标签不接收鼠标事件，事件由父窗口处理
         self.pet_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        # 重要：确保标签在透明窗口上可见
+        self.pet_label.setAttribute(Qt.WA_TranslucentBackground, False)
         self._sync_movie_scale()
         self._ensure_layered_window_safe()
         
@@ -590,8 +708,9 @@ class PetWindow(QWidget):
                     self._clear_frame_animation()
                     self.movie = cached['movie']
                     self._prepare_movie(self.movie)
+                    self.pet_label.setText("")  # 清除文本，确保显示动画
                     self.pet_label.setMovie(self.movie)
-                    self.pet_label.setStyleSheet("")
+                    self.pet_label.setStyleSheet("background-color: transparent;")
                     self.movie.start()
                     self.current_animation = animation_name
                     print(f"[宠物] 加载动画(缓存): {animation_name}.gif")
@@ -601,24 +720,34 @@ class PetWindow(QWidget):
                 elif cached['type'] == 'png':
                     # 使用缓存的PNG
                     self._clear_frame_animation()
-                    self.pet_label.setPixmap(cached['pixmap'].scaled(
+                    scaled_pixmap = cached['pixmap'].scaled(
                         self.pet_label.size(),
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
-                    ))
-                    self.pet_label.setStyleSheet("")
+                    )
+                    self.pet_label.setPixmap(scaled_pixmap)
+                    self.pet_label.setText("")  # 清除文本，确保显示图片
+                    self.pet_label.setStyleSheet("background-color: transparent;")
                     self.movie = None
                     self.current_animation = animation_name
-                    print(f"[宠物] 加载图片(缓存): {animation_name}.png")
-                    self._log_debug(f"动画缓存命中 PNG -> {animation_name}")
+                    # 强制刷新窗口，确保图片显示
+                    self.update()
+                    self.repaint()
+                    print(f"[宠物] 加载图片(缓存): {animation_name}.png, pixmap尺寸={scaled_pixmap.width()}x{scaled_pixmap.height()}, isNull={scaled_pixmap.isNull()}")
+                    self._log_debug(f"动画缓存命中 PNG -> {animation_name}, pixmap={scaled_pixmap.width()}x{scaled_pixmap.height()}")
                     return self._animation_load_succeeded()
                 
                 elif cached['type'] == 'frames':
+                    self.pet_label.setText("")  # 清除文本，确保显示帧动画
+                    self.pet_label.setStyleSheet("background-color: transparent;")
                     self._start_frame_animation(
                         animation_name,
                         cached['frames'],
                         cached.get('loop', True)
                     )
+                    # 强制刷新窗口，确保帧动画显示
+                    self.update()
+                    self.repaint()
                     print(f"[宠物] 加载帧动画(缓存): {animation_name}")
                     self._log_debug(f"动画缓存命中 FRAMES -> {animation_name}")
                     return self._animation_load_succeeded()
@@ -643,8 +772,9 @@ class PetWindow(QWidget):
                 self.movie.setSpeed(speed)
                 
                 self._prepare_movie(self.movie)
+                self.pet_label.setText("")  # 清除文本，确保显示动画
                 self.pet_label.setMovie(self.movie)
-                self.pet_label.setStyleSheet("")
+                self.pet_label.setStyleSheet("background-color: transparent;")
                 self.movie.start()
                 self.current_animation = animation_name
                 print(f"[宠物] 加载动画: {animation_name}.gif")
@@ -656,12 +786,13 @@ class PetWindow(QWidget):
             if os.path.exists(png_path):
                 pixmap = QPixmap(png_path)
                 if not pixmap.isNull():
+                    self.pet_label.setText("")  # 清除文本，确保显示图片
                     self.pet_label.setPixmap(pixmap.scaled(
                         self.pet_label.size(),
                         Qt.KeepAspectRatio,
                         Qt.SmoothTransformation
                     ))
-                    self.pet_label.setStyleSheet("")
+                    self.pet_label.setStyleSheet("background-color: transparent;")
                     self.movie = None
                     self.current_animation = animation_name
                     print(f"[宠物] 加载图片: {animation_name}.png")
@@ -786,8 +917,12 @@ class PetWindow(QWidget):
         """将帧图像绘制到标签"""
         pixmap = frame.get('pixmap')
         if pixmap:
+            self.pet_label.setText("")  # 清除文本，确保显示图片
             self.pet_label.setPixmap(pixmap)
-            self.pet_label.setStyleSheet("")
+            self.pet_label.setStyleSheet("background-color: transparent;")
+            # 强制刷新窗口
+            self.update()
+            self.repaint()
     
     def _sync_movie_scale(self):
         """将 GIF 动画缩放到标签大小，避免 layered window 错误"""
@@ -1160,6 +1295,69 @@ class PetWindow(QWidget):
         self._sync_movie_scale()
         self._ensure_layered_window_safe()
     
+    def paintEvent(self, event):
+        """绘制事件 - 确保透明窗口上的内容被正确绘制"""
+        # 对于透明窗口，我们需要直接绘制内容，而不是依赖 QLabel
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        
+        # 重要：对于透明窗口，需要设置合成模式确保内容可见
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+        
+        drawn = False
+        
+        # 优先检查是否有 pixmap（帧动画或PNG）
+        if hasattr(self, 'pet_label') and self.pet_label:
+            pixmap = self.pet_label.pixmap()
+            if pixmap and not pixmap.isNull():
+                # 绘制到窗口中心
+                rect = self.rect()
+                scaled_pixmap = pixmap.scaled(
+                    rect.size(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+                x = (rect.width() - scaled_pixmap.width()) // 2
+                y = (rect.height() - scaled_pixmap.height()) // 2
+                # 确保 pixmap 有 alpha 通道时正确绘制
+                painter.drawPixmap(x, y, scaled_pixmap)
+                drawn = True
+                self._log_debug(f"paintEvent: 绘制 pixmap {scaled_pixmap.width()}x{scaled_pixmap.height()} @ ({x}, {y})")
+        
+        # 检查是否有 QMovie（GIF动画）
+        if not drawn and hasattr(self, 'movie') and self.movie and self.movie.isValid():
+            current_pixmap = self.movie.currentPixmap()
+            if not current_pixmap.isNull():
+                rect = self.rect()
+                scaled_pixmap = current_pixmap.scaled(
+                    rect.size(),
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+                x = (rect.width() - scaled_pixmap.width()) // 2
+                y = (rect.height() - scaled_pixmap.height()) // 2
+                painter.drawPixmap(x, y, scaled_pixmap)
+                drawn = True
+                self._log_debug(f"paintEvent: 绘制 QMovie {scaled_pixmap.width()}x{scaled_pixmap.height()} @ ({x}, {y})")
+        
+        # 如果没有图片，显示文本
+        if not drawn and hasattr(self, 'pet_label') and self.pet_label and self.pet_label.text():
+            painter.setPen(QColor(0, 0, 0))
+            if hasattr(self.pet_label, 'font'):
+                painter.setFont(self.pet_label.font())
+            rect = self.rect()
+            painter.drawText(rect, Qt.AlignCenter, self.pet_label.text())
+            drawn = True
+            self._log_debug(f"paintEvent: 绘制文本 '{self.pet_label.text()}'")
+        
+        painter.end()
+        
+        # 如果什么都没绘制，调用父类的 paintEvent 作为后备
+        if not drawn:
+            super().paintEvent(event)
+            self._log_debug("paintEvent: 未找到内容，调用父类 paintEvent")
+    
     def _prepare_movie(self, movie: Optional[QMovie]):
         """在设置到 QLabel 前预先缩放 GIF"""
         if not movie:
@@ -1175,6 +1373,52 @@ class PetWindow(QWidget):
         if self.width() < width or self.height() < height:
             self._apply_window_geometry(width, height)
         self._ensure_layered_window_safe()
+        
+        # 确保窗口真正显示：置顶、激活、确保在屏幕内
+        self.raise_()
+        self.activateWindow()
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized)
+        
+        # 确保窗口完全不透明
+        self.setWindowOpacity(1.0)
+        
+        # 确保窗口位置在屏幕可见区域内
+        screen = self.screen().geometry()
+        pos = self.pos()
+        x = max(screen.left(), min(pos.x(), screen.right() - self.width()))
+        y = max(screen.top(), min(pos.y(), screen.bottom() - self.height()))
+        if pos.x() != x or pos.y() != y:
+            self.move(x, y)
+            self._log_debug(f"调整窗口位置到屏幕内: ({x}, {y})")
+        
+        # 强制刷新窗口
+        self.update()
+        self.repaint()
+        
+        # 详细日志
+        self._log_debug(
+            f"窗口显示事件: 位置=({self.x()}, {self.y()}), "
+            f"尺寸={self.width()}x{self.height()}, "
+            f"可见={self.isVisible()}, "
+            f"透明度={self.windowOpacity()}, "
+            f"屏幕={screen.width()}x{screen.height()}"
+        )
+        
+        # 打印到控制台（用于调试）
+        print(f"[PetWindow.showEvent] 宠物窗口显示: ID={self.pet_id}, 位置=({self.x()}, {self.y()}), 尺寸={self.width()}x{self.height()}, 可见={self.isVisible()}")
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        
+        # 详细调试信息
+        screen_info = f"屏幕: {screen.width()}x{screen.height()} @ ({screen.x()}, {screen.y()})"
+        window_info = f"窗口: {self.width()}x{self.height()} @ ({self.x()}, {self.y()})"
+        visible_info = f"可见={self.isVisible()}, 最小化={self.isMinimized()}, 隐藏={self.isHidden()}"
+        opacity_info = f"透明度={self.windowOpacity()}"
+        self._log_debug(f"窗口显示事件: {window_info}, {screen_info}, {visible_info}, {opacity_info}")
+        
+        # 打印到控制台以便调试
+        print(f"[宠物窗口显示] {window_info}, {visible_info}, {opacity_info}")
     
     def mousePressEvent(self, event):
         """鼠标按下事件"""

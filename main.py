@@ -263,6 +263,10 @@ class DesktopPetApp:
             self.tray_icon.show()
             print("  [OK] 系统托盘创建完成")
             self.logger.info("系统托盘创建成功")
+            
+            # 初始化托盘菜单中的宠物实例列表
+            if self.pet_manager:
+                self.refresh_tray_pet_menu()
         except Exception as e:
             self.logger.exception("系统托盘创建失败")
             print(f"  [ERROR] 系统托盘创建失败: {e}")
@@ -466,10 +470,32 @@ class DesktopPetApp:
         pets = self.pet_manager.get_all_pets()
         if not pets:
             return
-        for pet in pets:
+        
+        # 计算每个宠物的初始位置，避免重叠
+        base_x = 100
+        base_y = 100
+        offset_x = 350  # 水平间距
+        
+        for idx, pet in enumerate(pets):
             window = self._create_pet_window(pet)
             self.pet_windows[pet['id']] = window
             self.pet_manager.register_pet_window(pet['id'], window)
+            
+            # 设置不同的初始位置，避免重叠
+            if idx > 0:
+                new_x = base_x + (idx * offset_x)
+                # 确保不超出屏幕
+                screen = window.screen().geometry()
+                if new_x + window.width() > screen.right():
+                    new_x = base_x
+                    new_y = base_y + (idx * 350)
+                    if new_y + window.height() > screen.bottom():
+                        new_y = base_y
+                else:
+                    new_y = base_y
+                window.move(new_x, new_y)
+                self.logger.info(f"宠物窗口 {pet['id']} 位置调整为: ({new_x}, {new_y})")
+        
         active_id = self.pet_manager.active_pet_id or pets[0]['id']
         self.pet_window = self.pet_windows.get(active_id)
         self.refresh_tray_pet_menu()
@@ -484,7 +510,36 @@ class DesktopPetApp:
         window.main_app = self
         if self.signals_initialized:
             self._attach_runtime_window_signals(window)
+        
+        # 确保窗口显示并置顶
         window.show()
+        window.raise_()
+        window.activateWindow()
+        
+        # 强制设置窗口属性确保可见
+        window.setWindowOpacity(1.0)
+        window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
+        
+        # 确保窗口在屏幕内
+        screen = window.screen().geometry()
+        pos = window.pos()
+        x = max(screen.left(), min(pos.x(), screen.right() - window.width()))
+        y = max(screen.top(), min(pos.y(), screen.bottom() - window.height()))
+        if pos.x() != x or pos.y() != y:
+            window.move(x, y)
+        
+        # 再次强制显示
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        
+        # 详细日志
+        info = (f"ID={pet_profile.get('id')}, 位置=({window.x()}, {window.y()}), "
+                f"尺寸={window.width()}x{window.height()}, "
+                f"可见={window.isVisible()}, 最小化={window.isMinimized()}, "
+                f"隐藏={window.isHidden()}, 透明度={window.windowOpacity()}")
+        self.logger.info(f"宠物窗口已创建并显示: {info}")
+        print(f"[主程序] 宠物窗口已创建: {info}")
         return window
 
     def _update_pet_window_references(self):
@@ -1383,9 +1438,34 @@ class DesktopPetApp:
     def run(self):
         """运行应用"""
         try:
-            # 显示宠物窗口
-            self.pet_window.show()
-            self.logger.info("宠物窗口已显示")
+            # 显示所有宠物窗口并确保可见
+            if self.pet_window:
+                self.pet_window.setWindowOpacity(1.0)
+                self.pet_window.setWindowState(self.pet_window.windowState() & ~Qt.WindowMinimized)
+                self.pet_window.show()
+                self.pet_window.raise_()
+                self.pet_window.activateWindow()
+                info = (f"位置=({self.pet_window.x()}, {self.pet_window.y()}), "
+                       f"尺寸={self.pet_window.width()}x{self.pet_window.height()}, "
+                       f"可见={self.pet_window.isVisible()}, 最小化={self.pet_window.isMinimized()}, "
+                       f"隐藏={self.pet_window.isHidden()}, 透明度={self.pet_window.windowOpacity()}")
+                self.logger.info(f"宠物窗口已显示: {info}")
+                print(f"[主程序.run] 宠物窗口已显示: {info}")
+            
+            # 显示所有宠物窗口
+            for pet_id, window in self.pet_windows.items():
+                if window:
+                    window.setWindowOpacity(1.0)
+                    window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
+                    window.show()
+                    window.raise_()
+                    window.activateWindow()
+                    info = (f"位置=({window.x()}, {window.y()}), "
+                           f"尺寸={window.width()}x{window.height()}, "
+                           f"可见={window.isVisible()}, 最小化={window.isMinimized()}, "
+                           f"隐藏={window.isHidden()}, 透明度={window.windowOpacity()}")
+                    self.logger.info(f"宠物窗口 {pet_id} 已显示: {info}")
+                    print(f"[主程序.run] 宠物窗口 {pet_id} 已显示: {info}")
             
             # 显示启动通知
             if self.tray_icon:
